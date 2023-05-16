@@ -47,6 +47,7 @@
       <label>API Status:</label> <span id="status-text">not available</span>
     </div>
     <input type=button id="switch" value="Start"></input>
+    <input type=button id="calibrate" value="Calibrate"></input> <span id="rounds"></span>
     <div></div>
       <span id="emoji">
         😴
@@ -70,15 +71,231 @@
   </body>
   <script src="mandelbrot.js"></script>
   <script type="module">
-    const elem = document.querySelector("#status-text");
-    if (!("PressureObserver" in window)) {
-      elem.innerText = "not available";
-      elem.classList.add("disabled");
-    } else {
-      elem.innerText = "enabled";
-      elem.classList.add("enabled");
-      run();
+    const delay = 4000;
+    const limits = [];
+
+    String.prototype.replaceAt = function(index, ch) {
+      let str = this + "□".repeat(Math.max(0, index + 1 - this.length));
+      return ch ? str.replace(/./g, (c, i) => i == index ? ch : c) : str;
     }
+
+    const toBinary = (v, length) => (v >>> 0).toString(2).padStart(length ?? 8, '0');
+    const toCaretString = pos => (pos >= 0) ? ' '.repeat(pos + Math.floor(pos / 8)) + "^": "";
+
+    const reverseByte = b => {
+      b = (b & 0b11110000) >> 4 | (b & 0b00001111) << 4;
+      b = (b & 0b11001100) >> 2 | (b & 0b00110011) << 2;
+      b = (b & 0b10101010) >> 1 | (b & 0b01010101) << 1;
+      return b;
+    }
+
+    class BitView {
+      constructor(buf) {
+        this.buffer = buf;
+        this.u8 = new Uint8Array(buf);
+        this.length = 0;
+      }
+
+      getBit(index) {
+        const v = this.u8[index >> 3];
+        const offset = index & 0x7;
+        return (v >> (7-offset)) & 1;
+      };
+
+      setBit(index, value) {
+        this.length = Math.max(this.length, index + 1);
+        const offset = index & 0x7;
+        if (value) {
+          this.u8[index >> 3] |= (0x80 >> offset);
+        } else {
+          this.u8[index >> 3] &= ~(0x80 >> offset);
+        }
+      };
+
+      validate() {
+        const complement = new Uint8Array([reverseByte(~this.u8[1])])[0]; // we need it unsigned
+        return complement == this.u8[0];
+      }
+
+      reset() {
+        this.length = 0;
+        this.u8.fill(0);
+      }
+
+      shift16Left(amount) {
+        let view = new DataView(this.buffer);
+        let value = view.getUint16(0, false);
+        view.setInt16(0, value << amount, false);
+      } 
+
+      toString() {
+        const res = [];
+        let i = 0
+        for (; i < this.u8.length; i++) {
+          res.push(toBinary(this.u8[i]))
+        }
+        return res.join(" ");
+      }
+
+      toCaretString() {
+        return (this.length) ? ' '.repeat(this.length - 1 + Math.floor((this.length - 1) / 8)) + "^": "";
+      }
+
+      [Symbol.iterator]() {
+        return {
+          current: 0,
+          last: this.buffer.length * 8,
+          view: this,
+
+          next() {
+            if (this.current <= this.last) {
+              return { done: false, value: this.view.getBit(this.current++) };
+            } else {
+              return { done: true };
+            }
+          }
+        };
+      }
+    }
+
+    async function sendMessage(msg, zero, reset, one, delay) {
+      const enc = new TextEncoder("utf-8");
+
+      // We send 32 bits per ASCII character:
+      //   |position| with the first bit set to 1 indicating a position
+      //   |checksum| and alignment byte for the position
+      //   |value| Non extended ASCII character
+      //   |checksum| and alignment byte for the value
+      //
+      // A checksum is the reversed complement, e.g for 0110 1000 
+      // the complement will be 10010111 and reversed it will be 11101001
+      let text = [...enc.encode(msg)].flatMap((value, position) => {
+        const pos = position | 0b10000000;
+        const vPos = reverseByte(~pos);
+        const vValue = reverseByte(~value)
+        console.log([ toBinary(pos), toBinary(vPos), toBinary(value), toBinary(vValue) ]);
+        return [ pos, vPos, value, vValue ]
+      })
+
+      const bits = new BitView(new Uint8Array([...text]));
+
+      const timeout = delay => new Promise(resolve => setTimeout(resolve, delay));
+
+      while (true) {
+        let i = 0;
+        for (let bit of bits) {
+          console.log("Resetting");
+          setWorkerCount(reset);
+          await timeout(delay);
+
+          let byteIndex = Math.floor(i / 8);
+          let dwordIndex = byteIndex % 4;
+
+          switch (dwordIndex) {
+            case 0: {
+              let byte = bits.u8[byteIndex];
+              let pos = byte - 128;
+              console.log(`Sending data: bit '${bit}' (position: ${pos})`);
+              break;
+            }
+            case 1:
+            case 3:
+              console.log(`Sending data: bit '${bit}' (checksum)`);
+              break;
+            case 2: {        
+              const dec = new TextDecoder("utf-8");
+              const ch = dec.decode(bits.buffer.slice(byteIndex, byteIndex + 1));
+              console.log(`Sending data: bit '${bit}' (ch: '${ch}')`);
+              break;
+            }
+          }
+
+          console.log(`${toBinary(bits.u8[Math.floor(i / 8)])}\n${toCaretString(i++ % 8)}`);
+
+          setWorkerCount(bit ? one : zero);
+          await timeout(delay);
+        }
+      }
+    }
+
+    let msgReceived = "";
+    let recView = new BitView(new ArrayBuffer(2));
+    let idx = 0;
+    let align = 0;
+    let position = -1;
+    const dec = new TextDecoder("utf-8");
+
+    const onbitreceived = (bit) => {
+      recView.setBit(idx, bit);
+
+      console.log(`Receiving data: bit '${bit}', msg: "${msgReceived}"`);
+      console.log(recView.toString());
+      console.log(recView.toCaretString());
+
+      if (idx !== 15) {
+        idx++;
+        return;
+      }
+
+      if (recView.validate()) {
+        if (recView.getBit(0) === 1) { // Position, we ignore extended ASCII
+          recView.setBit(0, 0);
+          position = recView.u8[0];
+          console.log(`Received position ${position}`);
+          // Resize string if chars are missing.
+          msgReceived = msgReceived.replaceAt(position, "");
+        } else if (position > -1) {
+          const res = dec.decode(recView.buffer.slice(0, 1));
+          msgReceived = msgReceived.replaceAt(position, res);
+          console.log(`char: ${res} at pos: ${position}, msg: "${msgReceived}"`);
+          position = -1;
+        }
+        recView.reset();
+        idx = align = 0;
+      } else {
+        console.log(`Misaligned or corrupt data, shifting to find new alignment (${++align})...`);
+        recView.shift16Left(1);
+      }
+    }
+
+    let lastReceivedBit = -1;
+    const onstablestate = state => {
+      if (["serious"].includes(state)) {
+        if (lastReceivedBit > -1) {
+          onbitreceived(lastReceivedBit);
+          lastReceivedBit = -1;
+        }
+        return;
+      }
+
+      if (["fair"].includes(state)) {
+        lastReceivedBit = 0;
+        return;
+      }
+
+      if (["critical"].includes(state)) {
+        lastReceivedBit = 1;
+        return;
+      }
+    }
+
+    let timerId = -1;
+    let lastState;
+    const receiver = new PressureObserver(changes => {
+      let state = changes[0].state;
+      if (state == "nominal") {
+        state = "fair";
+      }
+
+      if (state === lastState) return;
+      lastState = state;
+
+      clearTimeout(timerId);
+      // ensure state for at least one second.
+      timerId = setTimeout(_ => onstablestate(state), 2000);
+    });
+
+    const elem = document.querySelector("#status-text");
 
     const emoji = document.getElementById("emoji");
     const label = document.getElementById("label");
@@ -105,9 +322,8 @@
       });
     }
 
-    function run() {
+    const run = () => {
       const observer = new PressureObserver(changes => {
-        console.log(changes);
         switch(changes[0].state) {
           case "nominal":
             emoji.innerText = "😌";
@@ -146,6 +362,89 @@
         }
       };
 
+      const calibrateBtn = document.getElementById("calibrate");
+      calibrateBtn.onclick = async ev => {
+        calibrateBtn.disabled = true;
+        const wakeLock = await navigator.wakeLock.request("screen");
+
+        const start = () => document.getElementById("start").click();
+        const stop = () => document.getElementById("stop").click();
+        const add = () => document.getElementById("ww_add").click();
+        const remove = () => document.getElementById("ww_sub").click();
+        let fn = add;
+
+        start();
+
+        function getMostFrequent(arr) {
+          const hashmap = arr.reduce((acc, val) => {
+            acc[val] = (acc[val] || 0 ) + 1
+            return acc
+          }, {})
+          return Object.keys(hashmap).reduce((a, b) => hashmap[a] > hashmap[b] ? a : b)
+        }
+
+        const calibrate = async () => {
+          let timerId = 0;
+          const measure = {};
+          let lastState;
+          let countDown = 2;
+
+          return new Promise(resolve => {
+            timerId = setInterval(() => {
+              fn();
+              console.log(`ajusting worker count #${worker_count}`);
+
+              if (lastState === "critical") {
+                countDown--;
+              }
+
+              if (countDown <= 0) {
+                clearInterval(timerId);
+                calibrator.disconnect();
+
+                console.log("expected", JSON.stringify({ zero: 0, reset: 5, one: 8, delay: delay}));
+                console.log("calculated", JSON.stringify({
+                  zero: 0,
+                  reset: getMostFrequent(measure["serious"]),
+                  one: getMostFrequent(measure["critical"]),
+                  delay: delay
+                }));
+
+                return resolve({ zero: 0, reset: 5, one: 8, delay: delay});
+
+                resolve({
+                  zero: 0,
+                  reset: getMostFrequent(measure["serious"]),
+                  one: getMostFrequent(measure["critical"]),
+                  delay: delay
+                });
+              }
+            }, 30 * 1000); // half a minute at each count.
+
+            const calibrator = new PressureObserver(changes => {
+              lastState = changes[0].state;
+              (measure[lastState] ??= []).push(worker_count);
+            });
+
+            calibrator.observe("cpu");
+          });
+        };
+
+        calibrate().then(async config => {
+          await receiver.observe("cpu");
+          console.log(JSON.stringify(config));
+          sendMessage("hello world", config.zero, config.reset, config.one, config.delay);
+        });
+      }
+    }
+
+    if (!("PressureObserver" in window)) {
+      elem.innerText = "not available";
+      elem.classList.add("disabled");
+    } else {
+      elem.innerText = "enabled";
+      elem.classList.add("enabled");
+      run();
     }
   </script>
 </html>

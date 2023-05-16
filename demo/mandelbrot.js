@@ -294,7 +294,7 @@ function animateMandelbrot () {
     yc += yc_step;
   }
 
-  mandelbrotWorkers.addWorker (updateFrame, bufferSize);
+  mandelbrotWorkers.addWorker(updateFrame, bufferSize);
   requestFrame(0);
   advanceFrame();
 }
@@ -323,6 +323,15 @@ function ww_sub() {
   if (worker_count > 1) {
     worker_count--;
   }
+}
+
+function setWorkerCount(v) {
+  if (v == 0) {
+    stop();
+  } else {
+    start();
+  }
+  worker_count = v;
 }
 
 canvas.init ("mandel");
