@@ -2,7 +2,7 @@
 <meta charset="UTF-8">
 <html>
   <head>
-    <title>Compute Pressure Demo</title>     
+    <title>Compute Pressure Demo</title>
     <!-- Chrome origin trial token -->
     <meta http-equiv="origin-trial" content="AkQevalWmBczMoMwX9h5kb7teecrlJpkjDvGRQTgVVSmmHdTTHVcwYT42CUi6Z31ejoxx30kaRxVE0vzhcMURQ0AAABZeyJvcmlnaW4iOiJodHRwczovL3czYy5naXRodWIuaW86NDQzIiwiZmVhdHVyZSI6IkNvbXB1dGVQcmVzc3VyZV92MiIsImV4cGlyeSI6MTcwNDQxMjc5OX0=">
   </head>
@@ -126,7 +126,7 @@
         let view = new DataView(this.buffer);
         let value = view.getUint16(0, false);
         view.setInt16(0, value << amount, false);
-      } 
+      }
 
       toString() {
         const res = [];
@@ -167,7 +167,7 @@
       //   |value| Non extended ASCII character
       //   |checksum| and alignment byte for the value
       //
-      // A checksum is the reversed complement, e.g for 0110 1000 
+      // A checksum is the reversed complement, e.g for 0110 1000
       // the complement will be 10010111 and reversed it will be 11101001
       let text = [...enc.encode(msg)].flatMap((value, position) => {
         const pos = position | 0b10000000;
@@ -202,7 +202,7 @@
             case 3:
               console.log(`Sending data: bit '${bit}' (checksum)`);
               break;
-            case 2: {        
+            case 2: {
               const dec = new TextDecoder("utf-8");
               const ch = dec.decode(bits.buffer.slice(byteIndex, byteIndex + 1));
               console.log(`Sending data: bit '${bit}' (ch: '${ch}')`);
@@ -305,8 +305,8 @@
     for (let btn of Array.from(document.getElementsByTagName("button"))) {
       btn.addEventListener("click", () => {
         const el = document.createElement("div");
-        counter.innerText = worker_count;
-        el.innerText = worker_count;
+        counter.innerText = workerCount();
+        el.innerText = workerCount();
         canvas.insertAdjacentElement("afterend", el);
 
         const animation = [
@@ -392,7 +392,7 @@
           return new Promise(resolve => {
             timerId = setInterval(() => {
               fn();
-              console.log(`ajusting worker count #${worker_count}`);
+              console.log(`ajusting worker count #${workerCount()}`);
 
               if (lastState === "critical") {
                 countDown--;
@@ -423,7 +423,7 @@
 
             const calibrator = new PressureObserver(changes => {
               lastState = changes[0].state;
-              (measure[lastState] ??= []).push(worker_count);
+              (measure[lastState] ??= []).push(workerCount());
             });
 
             calibrator.observe("cpu");
