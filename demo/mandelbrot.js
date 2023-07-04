@@ -1,99 +1,66 @@
-// Mandelbrot using Webworkers
+// Mandelbrot using Workers
 // Author: Peter Jensen, Intel Corporation
+//         Kenneth Christiansen, Intel Corporation
 
 const $ = id => document.getElementById(id);
 
-// global variables
-var max_iterations = 100;
-var worker_count   = 0;
+const MAX_ITERATIONS = 100;
 
 class Mandelbrot {
-  #ctx;
+  #context;
+  #canvas;
   #imageData;
 
   width;
   height;
+  scale;
 
-  constructor(canvas_id) {
-    const canvas = document.getElementById(canvas_id);
-    this.#ctx = canvas.getContext("2d");
-    this.width = canvas.width;
-    this.height = canvas.height;
-    this.#imageData = this.#ctx.getImageData(0, 0, this.width, this.height);
+  constructor(canvas_id, scale = 1) {
+    this.#canvas = document.getElementById(canvas_id);
+    this.#context = this.#canvas.getContext("2d");
+    this.width = this.#canvas.width * scale;
+    this.height = this.#canvas.height * scale;
+    this.#imageData = this.#context.createImageData(this.width, this.height);
   }
 
-  clear() {
-    for (var i = 0; i < this.#imageData.data.length; i = i + 4) {
-      this.#imageData.data[i] = 0;
-      this.#imageData.data[i + 1] = 0;
-      this.#imageData.data[i + 2] = 0;
-      this.#imageData.data[i + 3] = 255;
+  setScale(scale = 1) {
+    this.width = this.#canvas.width * scale;
+    this.height = this.#canvas.height * scale;
+    this.#imageData = this.#context.createImageData(this.width, this.height);
+  }
+
+  async drawImageFrame(data) {
+    if (data) {
+      this.#imageData.data.set(data);
+    } else {
+      for (var i = 0; i < this.#imageData.data.length; i = i + 4) {
+        this.#imageData.data[i] = 0;
+        this.#imageData.data[i + 1] = 0;
+        this.#imageData.data[i + 2] = 0;
+        this.#imageData.data[i + 3] = 255;
+      }
     }
-  }
-
-  update() {
-    this.#ctx.putImageData(this.#imageData, 0, 0);
-  }
-
-  updateFromImageData(image_data) {
-    this.#imageData.data.set(image_data);
-    this.#ctx.putImageData(this.#imageData, 0, 0);
-  }
-
-  setPixel(x, y, rgb) {
-    const index = 4 * (x + this.width * y);
-    this.#imageData.data[index] = rgb[0];
-    this.#imageData.data[index + 1] = rgb[1];
-    this.#imageData.data[index + 2] = rgb[2];
-    this.#imageData.data[index + 3] = 255;
-  }
-
-  colorMap(value) {
-    if (value === max_iterations) {
-      return [0, 0, 0];
-    }
-    var rgb = (value * 0xffff / max) * 0xff;
-    var red = rgb & 0xff;
-    var green = (rgb >> 8) & 0xff;
-    var blue = (rgb >> 16) & 0xff;
-
-    return [red, green, blue];
-  }
-
-  mapColorAndSetPixel(x, y, value) {
-    var rgb, r, g, b;
-    var index = 4 * (x + this.width * y);
-    if (value === max_iterations) {
-      r = 0;
-      g = 0;
-      b = 0;
-    }
-    else {
-      rgb = (value * 0xffff / max_iterations) * 0xff;
-      r = rgb & 0xff;
-      g = (rgb >> 8) & 0xff;
-      b = (rgb >> 16) & 0xff;
-    }
-    this.#imageData.data[index] = r;
-    this.#imageData.data[index + 1] = g;
-    this.#imageData.data[index + 2] = b;
-    this.#imageData.data[index + 3] = 255;
+    const image = await createImageBitmap(this.#imageData, {
+      resizeWidth: this.#canvas.width,
+      resizeheight: this.#canvas.height
+    });
+    this.#context.drawImage(image, 0, 0);
   }
 };
 
 class MandelbrotWorker extends Worker {
-  constructor(handler, bufferSize) {
+  constructor(bufferSize) {
     super("mandelbrot-worker-asm.js");
-    this.handler = handler;
     this.buffer = new ArrayBuffer(bufferSize);
   }
 };
 
 const mandelbrotWorkers = new class {
   #workers = [];
+  bufferByteLength = 0;
 
-  addWorker(handler, bufferSize) {
-    const worker = new MandelbrotWorker(handler, bufferSize);
+  addWorker(handler) {
+    const worker = new MandelbrotWorker(this.bufferByteLength);
     this.#workers.push(worker);
 
     worker.addEventListener('message', handler, false);
@@ -109,6 +76,9 @@ const mandelbrotWorkers = new class {
   }
 
   restoreBuffer(index, buffer) {
+    if (buffer.byteLength != this.bufferByteLength) {
+      buffer = new ArrayBuffer(this.bufferByteLength);
+    }
     this.#workers[index].buffer = buffer;
   }
 
@@ -151,7 +121,9 @@ class Animator {
 
   constructor(canvas) {
     this.canvas = canvas;
-    this.bufferSize = canvas.width * canvas.height * 4;
+    canvas.drawImageFrame(null);
+
+    mandelbrotWorkers.bufferByteLength = canvas.width * canvas.height * 4;
 
     this.scale_step  = (this.scale_end - this.scale_start) / this.steps;
     this.xc_step     = (this.xc_end - this.xc_start) / this.steps;
@@ -191,14 +163,14 @@ class Animator {
       xc:             this.xc,
       yc:             this.yc,
       scale:          this.scale,
-      max_iterations: max_iterations
+      max_iterations: MAX_ITERATIONS
     });
     this.request_count++;
     this.advanceFrame();
   }
 
   paintFrame(buffer) {
-    this.canvas.updateFromImageData(buffer);
+    this.canvas.drawImageFrame(buffer);
   }
 
   workerCount() {
@@ -213,6 +185,11 @@ class Animator {
     while (mandelbrotWorkers.workerCount() > count) {
       this.removeWorker();
     }
+  }
+
+  setScale(scale = 1) {
+    this.canvas.setScale(scale);
+    mandelbrotWorkers.bufferByteLength = canvas.width * canvas.height * 4;
   }
 
   addWorker() {
@@ -232,8 +209,10 @@ class Animator {
         return;
       }
 
-      var buffer = new Uint8ClampedArray(e.data.buffer);
-      this.paintFrame(buffer);
+      // We might have rescaled.
+      if (e.data.buffer.byteLength === mandelbrotWorkers.bufferByteLength) {
+        this.paintFrame(new Uint8ClampedArray(e.data.buffer));
+      }
       this.frame_count++
 
       if (this.pending_frames.length > 0) {
@@ -243,7 +222,9 @@ class Animator {
           var windex = this.pending_frames[frame].worker_index;
           this.pending_frames.splice(frame, 1); // remove the frame from the pending_frames
           var buffer = mandelbrotWorkers.bufferOf(windex);
-          this.paintFrame(new Uint8ClampedArray(buffer));
+          if (buffer.byteLength) { // detached buffers have zero length
+            this.paintFrame(new Uint8ClampedArray(buffer));
+          }
           this.frame_count++;
           if (mandelbrotWorkers.workerIsActive(windex)) {
             this.requestFrame(windex);
@@ -258,7 +239,7 @@ class Animator {
       }
     }
 
-    const workerIndex = mandelbrotWorkers.addWorker(updateFrame, this.bufferSize);
+    const workerIndex = mandelbrotWorkers.addWorker(updateFrame);
     this.requestFrame(workerIndex);
     this.advanceFrame();
   }
@@ -268,16 +249,15 @@ class Animator {
   }
 }
 
-worker_count = 0;
 const canvas = new Mandelbrot("mandel");
 const animator = new Animator(canvas);
-canvas.clear();
-canvas.update();
 
 $("start").onclick = () => animator.setWorkerCount(1);
 $("stop").onclick = () => animator.setWorkerCount(0);
 $("ww_add").onclick = () => animator.addWorker();
 $("ww_sub").onclick = () => animator.removeWorker();
+$("scale").onchange = e => animator.setScale(event.target.value);
+
 
 const setWorkerCount = count => animator.setWorkerCount(count);
 const workerCount = () => animator.workerCount();
