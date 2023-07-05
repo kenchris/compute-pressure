@@ -222,7 +222,7 @@ class Animator {
           var windex = this.pending_frames[frame].worker_index;
           this.pending_frames.splice(frame, 1); // remove the frame from the pending_frames
           var buffer = mandelbrotWorkers.bufferOf(windex);
-          if (buffer.byteLength) { // detached buffers have zero length
+          if (buffer && buffer.byteLength) { // detached buffers have zero length
             this.paintFrame(new Uint8ClampedArray(buffer));
           }
           this.frame_count++;
