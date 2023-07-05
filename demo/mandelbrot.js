@@ -33,18 +33,16 @@ class Mandelbrot {
     if (data) {
       this.#imageData.data.set(data);
     } else {
-      for (var i = 0; i < this.#imageData.data.length; i = i + 4) {
-        this.#imageData.data[i] = 0;
-        this.#imageData.data[i + 1] = 0;
-        this.#imageData.data[i + 2] = 0;
-        this.#imageData.data[i + 3] = 255;
-      }
+      this.#context.rect(0, 0, this.#canvas.width, this.#canvas.height);
+      this.#context.fillStyle = "black";
+      this.#context.fill();
+      return;
     }
-    const image = await createImageBitmap(this.#imageData, {
-      resizeWidth: this.#canvas.width,
-      resizeheight: this.#canvas.height
-    });
-    this.#context.drawImage(image, 0, 0);
+    const image = await createImageBitmap(this.#imageData);
+
+    let x = (this.#canvas.width - this.width) / 2;
+    let y = (this.#canvas.height - this.height) / 2;
+    this.#context.drawImage(image, x, y);
   }
 };
 
@@ -188,6 +186,7 @@ class Animator {
   }
 
   setScale(scale = 1) {
+    canvas.drawImageFrame(null);
     this.canvas.setScale(scale);
     mandelbrotWorkers.bufferByteLength = canvas.width * canvas.height * 4;
   }
