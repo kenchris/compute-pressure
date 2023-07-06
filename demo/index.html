@@ -70,6 +70,12 @@
     <button id="ww_sub">Remove worker</button>
     <br>
     <input id="scale" type="range" min="0.1" max="1" value="1" step="0.1">
+    <br>
+    <span id="what">Unknown</span>
+    <br>
+    <input id="sent" type="text"><input id="received" type="text">
+    <br>
+    <input id="message" type="text">
   </body>
   <script type="module">
     import { Mandelbrot, Animator } from "./mandelbrot.js";
@@ -99,7 +105,6 @@
     }
 
     const toBinary = (v, length) => (v >>> 0).toString(2).padStart(length ?? 8, '0');
-    const toCaretString = pos => (pos >= 0) ? ' '.repeat(pos + Math.floor(pos / 8)) + "^": "";
 
     const reverseByte = b => {
       b = (b & 0b11110000) >> 4 | (b & 0b00001111) << 4;
@@ -156,10 +161,6 @@
         return res.join(" ");
       }
 
-      toCaretString() {
-        return (this.length) ? ' '.repeat(this.length - 1 + Math.floor((this.length - 1) / 8)) + "^": "";
-      }
-
       [Symbol.iterator]() {
         return {
           current: 0,
@@ -202,34 +203,43 @@
 
       while (true) {
         let i = 0;
+        let lastDwordIndex = 0;
         for (let bit of bits) {
-          console.log("Resetting");
+          console.log("Setting state to 'reset'");
           setWorkerCount(reset);
-          await timeout(delay);
+          await timeout(2*delay);
 
-          let byteIndex = Math.floor(i / 8);
+          let byteIndex = Math.floor(i++ / 8);
           let dwordIndex = byteIndex % 4;
 
+          if (dwordIndex !== lastDwordIndex) {
+            lastDwordIndex = dwordIndex;
+            if ([0, 2].includes(dwordIndex)) {
+              document.getElementById("sent").value = "";
+            } else {
+              document.getElementById("sent").value += " ";
+            }
+          }
+          document.getElementById("sent").value += `${bit}`;
+
+          let byte = bits.u8[byteIndex];
+          let chkByte = bits.u8[byteIndex + 1];
           switch (dwordIndex) {
             case 0: {
-              let byte = bits.u8[byteIndex];
               let pos = byte - 128;
-              console.log(`Sending data: bit '${bit}' (position: ${pos})`);
+              document.getElementById("what").innerText = `position: ${pos} (${toBinary(byte)}) + checksum (${toBinary(chkByte)})`;
               break;
             }
             case 1:
             case 3:
-              console.log(`Sending data: bit '${bit}' (checksum)`);
               break;
             case 2: {
               const dec = new TextDecoder("utf-8");
               const ch = dec.decode(bits.buffer.slice(byteIndex, byteIndex + 1));
-              console.log(`Sending data: bit '${bit}' (ch: '${ch}')`);
+              document.getElementById("what").innerText = `character: '${ch}' (${toBinary(byte)}) + checksum (${toBinary(chkByte)})`;
               break;
             }
           }
-
-          console.log(`${toBinary(bits.u8[Math.floor(i / 8)])}\n${toCaretString(i++ % 8)}`);
 
           setWorkerCount(bit ? one : zero);
           await timeout(delay);
@@ -247,9 +257,7 @@
     const onbitreceived = (bit) => {
       recView.setBit(idx, bit);
 
-      console.log(`Receiving data: bit '${bit}', msg: "${msgReceived}"`);
-      console.log(recView.toString());
-      console.log(recView.toCaretString());
+      document.getElementById("received").value += `${bit}`;
 
       if (idx !== 15) {
         idx++;
@@ -257,7 +265,7 @@
       }
 
       if (recView.validate()) {
-        if (recView.getBit(0) === 1) { // Position, we ignore extended ASCII
+        if (recView.getBit(0) === 1) { // Indicates position, we ignore extended ASCII
           recView.setBit(0, 0);
           position = recView.u8[0];
           console.log(`Received position ${position}`);
@@ -269,49 +277,82 @@
           console.log(`char: ${res} at pos: ${position}, msg: "${msgReceived}"`);
           position = -1;
         }
+        document.getElementById("message").value = msgReceived;
         recView.reset();
         idx = align = 0;
       } else {
         console.log(`Misaligned or corrupt data, shifting to find new alignment (${++align})...`);
         recView.shift16Left(1);
       }
+
+      document.getElementById("received").value = "";
     }
 
     let lastReceivedBit = -1;
     const onstablestate = state => {
-      if (["serious"].includes(state)) {
-        if (lastReceivedBit > -1) {
-          onbitreceived(lastReceivedBit);
-          lastReceivedBit = -1;
-        }
-        return;
-      }
-
-      if (["fair"].includes(state)) {
+      if (state == 0) {
         lastReceivedBit = 0;
         return;
       }
 
-      if (["critical"].includes(state)) {
+      if (state == 1) { // reset
+        if (lastReceivedBit > -1) {
+          onbitreceived(lastReceivedBit);
+        }
+      }
+
+      if (state == 2) {
         lastReceivedBit = 1;
         return;
       }
     }
 
-    let timerId = -1;
-    let lastState;
+    let millis = [0, 0, 0]; // zero, reset, one
+    let noww = performance.now();
+    const handler = value => {
+      let state = value
+      let start = noww;
+      noww = performance.now();
+      let millisInState = (noww - start);
+
+      millis[state] += millisInState;
+
+      let i = millis.indexOf(Math.max(...millis));
+      let time = millis[i];
+      console.log(millis, i, time);
+
+      if (i === 1) {
+        // The hardest state to simulate is "serious" (reset)
+        // so we require at least 2 seconds in the state
+        if (time < 2_000) {
+          millis[1] = 0; // considered noise.
+          return;
+        }
+      }
+      millis = [0, 0, 0];
+      onstablestate(i);
+    };
+
+    let lastValue = -1;
     const receiver = new PressureObserver(changes => {
       let state = changes[0].state;
-      if (state == "nominal") {
-        state = "fair";
+      let value;
+      switch(state) {
+        case "nominal":
+        case "fair":
+          value = 0;
+          break;
+        case "serious":
+          value = 1;
+          break;
+        case "critical":
+          value = 2;
+          break;
       }
-
-      if (state === lastState) return;
-      lastState = state;
-
-      clearTimeout(timerId);
-      // ensure state for at least one second.
-      timerId = setTimeout(_ => onstablestate(state), 2000);
+      if (value !== lastValue) {
+        handler(value);
+      }
+      lastValue = value;
     });
 
     const elem = document.querySelector("#status-text");
@@ -382,6 +423,7 @@
       const calibrateBtn = document.getElementById("calibrate");
       calibrateBtn.onclick = async ev => {
         calibrateBtn.disabled = true;
+        document.getElementById("wrapper").style = "display: none";
         const wakeLock = await navigator.wakeLock.request("screen");
 
         const start = () => document.getElementById("start").click();
@@ -394,12 +436,7 @@
 
         const calibrate = async () => {
           let timerId = 0;
-          const measure = {
-            "nominal": [],
-            "fair": [],
-            "serious": [],
-            "critical": []
-          };
+          let measure = [];
           let lastState;
           let countDown = 2;
 
@@ -425,7 +462,11 @@
             }
           }
 
+          let done = false;
+
           return new Promise(resolve => {
+            //return resolve({ zero: 0, reset: 5, one: 8, delay: delay});
+
             timerId = setInterval(() => {
 
               if (lastState) {
@@ -433,16 +474,13 @@
                 // with this worker count.
                 report(lastState);
                 console.log(`${workerCount()} workers at scale ${currentScale()}: ${JSON.stringify(measure[workerCount()], null, "  ")}`);
+                done = measure[workerCount()]["critical"] > 0.99;
               }
 
               fn();
               console.log(`Calibrating for ${MEASURE_TIME/1000}sec with ${workerCount()} workers at scale ${currentScale()}`);
 
-              if (lastState === "critical") {
-                countDown--;
-              }
-
-              if (countDown <= 0) {
+              if (done) {
                 clearInterval(timerId);
                 calibrator.disconnect();
 
@@ -456,22 +494,22 @@
                 for (let count in measure) {
                   let nominal = measure[count].nominal;
                   if (nominal > result.nominalPercentage) {
-                    result.nominal = count;
+                    result.nominal = +count;
                     result.nominalPercentage = nominal;
                   }
                   let fair = measure[count].fair;
                   if (fair > result.fairPercentage) {
-                    result.fair = count;
+                    result.fair = +count;
                     result.fairPercentage = fair;
                   }
                   let serious = measure[count].serious;
                   if (serious > result.seriousPercentage) {
-                    result.serious = count;
+                    result.serious = +count;
                     result.seriousPercentage = serious;
                   }
                   let critical = measure[count].critical;
                   if (critical > result.criticalPercentage) {
-                    result.critical = count;
+                    result.critical = +count;
                     result.criticalPercentage = critical;
                   }
                 }
@@ -479,7 +517,7 @@
                 console.log("calculated", JSON.stringify(result));
                 resolve({ zero: 0, reset: result.serious, one: result.critical, delay: delay});
               }
-            }, MEASURE_TIME); // half a minute at each count.
+            }, MEASURE_TIME);
 
             const calibrator = new PressureObserver(changes => report(changes[0].state));
 
@@ -488,9 +526,9 @@
         };
 
         calibrate().then(async config => {
-          await receiver.observe("cpu");
           console.log(JSON.stringify(config));
           sendMessage("hello world", config.zero, config.reset, config.one, config.delay);
+          await receiver.observe("cpu");
         });
       }
     }
