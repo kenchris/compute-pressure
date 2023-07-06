@@ -2,21 +2,19 @@
 // Author: Peter Jensen, Intel Corporation
 //         Kenneth Christiansen, Intel Corporation
 
-const $ = id => document.getElementById(id);
-
 const MAX_ITERATIONS = 100;
 
-class Mandelbrot {
+export class Mandelbrot {
   #context;
   #canvas;
   #imageData;
 
   width;
   height;
-  scale;
+  scale = 1;
 
-  constructor(canvas_id, scale = 1) {
-    this.#canvas = document.getElementById(canvas_id);
+  constructor(canvasEl, scale = 1) {
+    this.#canvas = canvasEl;
     this.#context = this.#canvas.getContext("2d");
     this.width = this.#canvas.width * scale;
     this.height = this.#canvas.height * scale;
@@ -24,6 +22,7 @@ class Mandelbrot {
   }
 
   setScale(scale = 1) {
+    this.scale = scale;
     this.width = this.#canvas.width * scale;
     this.height = this.#canvas.height * scale;
     this.#imageData = this.#context.createImageData(this.width, this.height);
@@ -104,7 +103,7 @@ const mandelbrotWorkers = new class {
   }
 };
 
-class Animator {
+export class Animator {
   scale_start = 1.0;
   scale_end   = 0.0005;
   xc_start    = -0.5;
@@ -119,7 +118,7 @@ class Animator {
 
   constructor(canvas) {
     this.canvas = canvas;
-    canvas.drawImageFrame(null);
+    this.canvas.drawImageFrame(null);
 
     mandelbrotWorkers.bufferByteLength = canvas.width * canvas.height * 4;
 
@@ -186,9 +185,13 @@ class Animator {
   }
 
   setScale(scale = 1) {
-    canvas.drawImageFrame(null);
+    this.canvas.drawImageFrame(null);
     this.canvas.setScale(scale);
-    mandelbrotWorkers.bufferByteLength = canvas.width * canvas.height * 4;
+    mandelbrotWorkers.bufferByteLength = this.canvas.width * this.canvas.height * 4;
+  }
+
+  currentScale() {
+    return this.canvas.scale;
   }
 
   addWorker() {
@@ -247,16 +250,3 @@ class Animator {
     mandelbrotWorkers.terminateLastWorker();
   }
 }
-
-const canvas = new Mandelbrot("mandel");
-const animator = new Animator(canvas);
-
-$("start").onclick = () => animator.setWorkerCount(1);
-$("stop").onclick = () => animator.setWorkerCount(0);
-$("ww_add").onclick = () => animator.addWorker();
-$("ww_sub").onclick = () => animator.removeWorker();
-$("scale").onchange = e => animator.setScale(event.target.value);
-
-
-const setWorkerCount = count => animator.setWorkerCount(count);
-const workerCount = () => animator.workerCount();

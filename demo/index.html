@@ -71,8 +71,25 @@
     <br>
     <input id="scale" type="range" min="0.1" max="1" value="1" step="0.1">
   </body>
-  <script src="mandelbrot.js"></script>
   <script type="module">
+    import { Mandelbrot, Animator } from "./mandelbrot.js";
+
+    const mandel = new Mandelbrot(document.getElementById("mandel"));
+    const animator = new Animator(mandel);
+
+    const setWorkerCount = count => {
+      animator.setWorkerCount(count);
+      animateCounter();
+    }
+    const workerCount = () => animator.workerCount();
+    const currentScale = () => animator.currentScale();
+
+    document.getElementById("start").onclick = () => setWorkerCount(1);
+    document.getElementById("stop").onclick = () => setWorkerCount(0);
+    document.getElementById("ww_add").onclick = () => setWorkerCount(workerCount() + 1);
+    document.getElementById("ww_sub").onclick = () => setWorkerCount(workerCount() - 1);
+    document.getElementById("scale").onchange = e => animator.setScale(event.target.value);
+
     const delay = 4000;
     const limits = [];
 
@@ -304,24 +321,22 @@
     const canvas = document.getElementById("mandel");
     const counter = document.getElementById("counter");
 
-    for (let btn of Array.from(document.getElementsByTagName("button"))) {
-      btn.addEventListener("click", () => {
-        const el = document.createElement("div");
-        counter.innerText = workerCount();
-        el.innerText = workerCount();
-        canvas.insertAdjacentElement("afterend", el);
+    const animateCounter = () => {
+      const el = document.createElement("div");
+      counter.innerText = workerCount();
+      el.innerText = workerCount();
+      canvas.insertAdjacentElement("afterend", el);
 
-        const animation = [
-          { opacity: 1, transform: 'translateY(0px) translateX(0px) scale(1)' },
-          { opacity: 0, transform: `translateY(-200px) translateX(${Math.random() * 300 -150}px) scale(0.4)` }
-        ];
+      const animation = [
+        { opacity: 1, transform: 'translateY(0px) translateX(0px) scale(1)' },
+        { opacity: 0, transform: `translateY(-200px) translateX(${Math.random() * 300 -150}px) scale(0.4)` }
+      ];
 
-        const timing = {
-          duration: 600,
-          iterations: 1,
-        }
-        el.animate(animation, timing).finished.then(() => el.remove());
-      });
+      const timing = {
+        duration: 600,
+        iterations: 1,
+      }
+      el.animate(animation, timing).finished.then(() => el.remove());
     }
 
     const run = () => {
@@ -375,26 +390,53 @@
         const remove = () => document.getElementById("ww_sub").click();
         let fn = add;
 
-        start();
-
-        function getMostFrequent(arr) {
-          const hashmap = arr.reduce((acc, val) => {
-            acc[val] = (acc[val] || 0 ) + 1
-            return acc
-          }, {})
-          return Object.keys(hashmap).reduce((a, b) => hashmap[a] > hashmap[b] ? a : b)
-        }
+        const MEASURE_TIME = 10_000;
 
         const calibrate = async () => {
           let timerId = 0;
-          const measure = {};
+          const measure = {
+            "nominal": [],
+            "fair": [],
+            "serious": [],
+            "critical": []
+          };
           let lastState;
           let countDown = 2;
 
+          console.log(`Calibrating for ${MEASURE_TIME/1000}sec with ${workerCount()} workers at scale ${currentScale()}`);
+          let now = performance.now();
+
+          const report = state => {
+            let prevState = lastState;
+            lastState = state;
+            if (prevState) {
+              let lastTime = now;
+              now = performance.now();
+
+              if (!measure[workerCount()]) {
+                measure[workerCount()] = {
+                  "nominal": 0,
+                  "fair": 0,
+                  "serious": 0,
+                  "critical": 0
+                };
+              }
+              measure[workerCount()][prevState] += ((now - lastTime) / MEASURE_TIME);
+            }
+          }
+
           return new Promise(resolve => {
             timerId = setInterval(() => {
+
+              if (lastState) {
+                // Always inherit the latest state as you might see no changes
+                // with this worker count.
+                report(lastState);
+                console.log(`${workerCount()} workers at scale ${currentScale()}: ${JSON.stringify(measure[workerCount()], null, "  ")}`);
+              }
+
               fn();
-              console.log(`ajusting worker count #${workerCount()}`);
+              console.log(`Calibrating for ${MEASURE_TIME/1000}sec with ${workerCount()} workers at scale ${currentScale()}`);
 
               if (lastState === "critical") {
                 countDown--;
@@ -404,29 +446,42 @@
                 clearInterval(timerId);
                 calibrator.disconnect();
 
-                console.log("expected", JSON.stringify({ zero: 0, reset: 5, one: 8, delay: delay}));
-                console.log("calculated", JSON.stringify({
-                  zero: 0,
-                  reset: getMostFrequent(measure["serious"]),
-                  one: getMostFrequent(measure["critical"]),
-                  delay: delay
-                }));
+                let result = {
+                  nominal: null, nominalPercentage: 0,
+                  fair: null, fairPercentage: 0,
+                  serious: null, seriousPercentage: 0,
+                  critical: null, criticalPercentage: 0
+                }
 
-                return resolve({ zero: 0, reset: 5, one: 8, delay: delay});
+                for (let count in measure) {
+                  let nominal = measure[count].nominal;
+                  if (nominal > result.nominalPercentage) {
+                    result.nominal = count;
+                    result.nominalPercentage = nominal;
+                  }
+                  let fair = measure[count].fair;
+                  if (fair > result.fairPercentage) {
+                    result.fair = count;
+                    result.fairPercentage = fair;
+                  }
+                  let serious = measure[count].serious;
+                  if (serious > result.seriousPercentage) {
+                    result.serious = count;
+                    result.seriousPercentage = serious;
+                  }
+                  let critical = measure[count].critical;
+                  if (critical > result.criticalPercentage) {
+                    result.critical = count;
+                    result.criticalPercentage = critical;
+                  }
+                }
 
-                resolve({
-                  zero: 0,
-                  reset: getMostFrequent(measure["serious"]),
-                  one: getMostFrequent(measure["critical"]),
-                  delay: delay
-                });
+                console.log("calculated", JSON.stringify(result));
+                resolve({ zero: 0, reset: result.serious, one: result.critical, delay: delay});
               }
-            }, 30 * 1000); // half a minute at each count.
+            }, MEASURE_TIME); // half a minute at each count.
 
-            const calibrator = new PressureObserver(changes => {
-              lastState = changes[0].state;
-              (measure[lastState] ??= []).push(workerCount());
-            });
+            const calibrator = new PressureObserver(changes => report(changes[0].state));
 
             calibrator.observe("cpu");
           });
