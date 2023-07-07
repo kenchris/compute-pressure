@@ -96,7 +96,7 @@
     document.getElementById("ww_sub").onclick = () => setWorkerCount(workerCount() - 1);
     document.getElementById("scale").onchange = e => animator.setScale(event.target.value);
 
-    const delay = 4000;
+    const delay = 4_000;
     const limits = [];
 
     String.prototype.replaceAt = function(index, ch) {
@@ -205,10 +205,6 @@
         let i = 0;
         let lastDwordIndex = 0;
         for (let bit of bits) {
-          console.log("Setting state to 'reset'");
-          setWorkerCount(reset);
-          await timeout(2*delay);
-
           let byteIndex = Math.floor(i++ / 8);
           let dwordIndex = byteIndex % 4;
 
@@ -241,8 +237,13 @@
             }
           }
 
+          //console.log(`Sending ${bit}`);
           setWorkerCount(bit ? one : zero);
           await timeout(delay);
+
+          console.log("Sending 'reset'");
+          setWorkerCount(reset);
+          await timeout(2*delay);
         }
       }
     }
@@ -280,57 +281,31 @@
         document.getElementById("message").value = msgReceived;
         recView.reset();
         idx = align = 0;
+        document.getElementById("received").value = "";
       } else {
         console.log(`Misaligned or corrupt data, shifting to find new alignment (${++align})...`);
         recView.shift16Left(1);
-      }
-
-      document.getElementById("received").value = "";
-    }
-
-    let lastReceivedBit = -1;
-    const onstablestate = state => {
-      if (state == 0) {
-        lastReceivedBit = 0;
-        return;
-      }
-
-      if (state == 1) { // reset
-        if (lastReceivedBit > -1) {
-          onbitreceived(lastReceivedBit);
-        }
-      }
-
-      if (state == 2) {
-        lastReceivedBit = 1;
-        return;
       }
     }
 
     let millis = [0, 0, 0]; // zero, reset, one
     let noww = performance.now();
-    const handler = value => {
-      let state = value
+
+    let lastState = 1;
+    const handler = state => {
       let start = noww;
       noww = performance.now();
-      let millisInState = (noww - start);
+      let time = (noww - start);
 
-      millis[state] += millisInState;
+      millis[lastState] += time;
+      lastState = state;
 
-      let i = millis.indexOf(Math.max(...millis));
-      let time = millis[i];
-      console.log(millis, i, time);
-
-      if (i === 1) {
-        // The hardest state to simulate is "serious" (reset)
-        // so we require at least 2 seconds in the state
-        if (time < 2_000) {
-          millis[1] = 0; // considered noise.
-          return;
-        }
+      if (millis[1] > 6_000) {
+        let toDispatch = millis[0] > millis[2] ? 0 : 1;
+        console.log("Received", toDispatch);
+        onbitreceived(toDispatch);
+        millis = [0, 0, 0];
       }
-      millis = [0, 0, 0];
-      onstablestate(i);
     };
 
     let lastValue = -1;
@@ -465,7 +440,7 @@
           let done = false;
 
           return new Promise(resolve => {
-            //return resolve({ zero: 0, reset: 5, one: 8, delay: delay});
+            return resolve({ zero: 0, reset: 5, one: 8, delay: delay});
 
             timerId = setInterval(() => {
 
