@@ -79,6 +79,8 @@
   </body>
   <script type="module">
     import { Mandelbrot, Animator } from "./mandelbrot.js";
+    import { ByteView, reverseByte, toBinaryString } from "./binutils.js";
+    import { BitChannelObserver } from "./bit-channel-observer.js";
 
     const mandel = new Mandelbrot(document.getElementById("mandel"));
     const animator = new Animator(mandel);
@@ -104,80 +106,6 @@
       return ch ? str.replace(/./g, (c, i) => i == index ? ch : c) : str;
     }
 
-    const toBinary = (v, length) => (v >>> 0).toString(2).padStart(length ?? 8, '0');
-
-    const reverseByte = b => {
-      b = (b & 0b11110000) >> 4 | (b & 0b00001111) << 4;
-      b = (b & 0b11001100) >> 2 | (b & 0b00110011) << 2;
-      b = (b & 0b10101010) >> 1 | (b & 0b01010101) << 1;
-      return b;
-    }
-
-    class BitView {
-      constructor(buf) {
-        this.buffer = buf;
-        this.u8 = new Uint8Array(buf);
-        this.length = 0;
-      }
-
-      getBit(index) {
-        const v = this.u8[index >> 3];
-        const offset = index & 0x7;
-        return (v >> (7-offset)) & 1;
-      };
-
-      setBit(index, value) {
-        this.length = Math.max(this.length, index + 1);
-        const offset = index & 0x7;
-        if (value) {
-          this.u8[index >> 3] |= (0x80 >> offset);
-        } else {
-          this.u8[index >> 3] &= ~(0x80 >> offset);
-        }
-      };
-
-      validate() {
-        const complement = new Uint8Array([reverseByte(~this.u8[1])])[0]; // we need it unsigned
-        return complement == this.u8[0];
-      }
-
-      reset() {
-        this.length = 0;
-        this.u8.fill(0);
-      }
-
-      shift16Left(amount) {
-        let view = new DataView(this.buffer);
-        let value = view.getUint16(0, false);
-        view.setInt16(0, value << amount, false);
-      }
-
-      toString() {
-        const res = [];
-        let i = 0
-        for (; i < this.u8.length; i++) {
-          res.push(toBinary(this.u8[i]))
-        }
-        return res.join(" ");
-      }
-
-      [Symbol.iterator]() {
-        return {
-          current: 0,
-          last: this.buffer.length * 8,
-          view: this,
-
-          next() {
-            if (this.current <= this.last) {
-              return { done: false, value: this.view.getBit(this.current++) };
-            } else {
-              return { done: true };
-            }
-          }
-        };
-      }
-    }
-
     async function sendMessage(msg, zero, reset, one, delay) {
       const enc = new TextEncoder("utf-8");
 
@@ -193,11 +121,14 @@
         const pos = position | 0b10000000;
         const vPos = reverseByte(~pos);
         const vValue = reverseByte(~value)
-        console.log([ toBinary(pos), toBinary(vPos), toBinary(value), toBinary(vValue) ]);
+        console.log([
+          toBinaryString(pos), toBinaryString(vPos),
+          toBinaryString(value), toBinaryString(vValue)
+        ]);
         return [ pos, vPos, value, vValue ]
       })
 
-      const bits = new BitView(new Uint8Array([...text]));
+      const bits = new ByteView(new Uint8Array([...text]));
 
       const timeout = delay => new Promise(resolve => setTimeout(resolve, delay));
 
@@ -223,7 +154,7 @@
           switch (dwordIndex) {
             case 0: {
               let pos = byte - 128;
-              document.getElementById("what").innerText = `position: ${pos} (${toBinary(byte)}) + checksum (${toBinary(chkByte)})`;
+              document.getElementById("what").innerText = `position: ${pos} (${toBinaryString(byte)}) + checksum (${toBinaryString(chkByte)})`;
               break;
             }
             case 1:
@@ -232,7 +163,7 @@
             case 2: {
               const dec = new TextDecoder("utf-8");
               const ch = dec.decode(bits.buffer.slice(byteIndex, byteIndex + 1));
-              document.getElementById("what").innerText = `character: '${ch}' (${toBinary(byte)}) + checksum (${toBinary(chkByte)})`;
+              document.getElementById("what").innerText = `character: '${ch}' (${toBinaryString(byte)}) + checksum (${toBinaryString(chkByte)})`;
               break;
             }
           }
@@ -249,13 +180,14 @@
     }
 
     let msgReceived = "";
-    let recView = new BitView(new ArrayBuffer(2));
+    let recView = new ByteView(new ArrayBuffer(2));
     let idx = 0;
     let align = 0;
     let position = -1;
     const dec = new TextDecoder("utf-8");
 
-    const onbitreceived = (bit) => {
+    const receiver = new BitChannelObserver(bit => {
+      console.log("Received", bit);
       recView.setBit(idx, bit);
 
       document.getElementById("received").value += `${bit}`;
@@ -279,55 +211,13 @@
           position = -1;
         }
         document.getElementById("message").value = msgReceived;
-        recView.reset();
+        recView.clear();
         idx = align = 0;
         document.getElementById("received").value = "";
       } else {
         console.log(`Misaligned or corrupt data, shifting to find new alignment (${++align})...`);
         recView.shift16Left(1);
       }
-    }
-
-    let millis = [0, 0, 0]; // zero, reset, one
-    let noww = performance.now();
-
-    let lastState = 1;
-    const handler = state => {
-      let start = noww;
-      noww = performance.now();
-      let time = (noww - start);
-
-      millis[lastState] += time;
-      lastState = state;
-
-      if (millis[1] > 6_000) {
-        let toDispatch = millis[0] > millis[2] ? 0 : 1;
-        console.log("Received", toDispatch);
-        onbitreceived(toDispatch);
-        millis = [0, 0, 0];
-      }
-    };
-
-    let lastValue = -1;
-    const receiver = new PressureObserver(changes => {
-      let state = changes[0].state;
-      let value;
-      switch(state) {
-        case "nominal":
-        case "fair":
-          value = 0;
-          break;
-        case "serious":
-          value = 1;
-          break;
-        case "critical":
-          value = 2;
-          break;
-      }
-      if (value !== lastValue) {
-        handler(value);
-      }
-      lastValue = value;
     });
 
     const elem = document.querySelector("#status-text");
@@ -503,7 +393,7 @@
         calibrate().then(async config => {
           console.log(JSON.stringify(config));
           sendMessage("hello world", config.zero, config.reset, config.one, config.delay);
-          await receiver.observe("cpu");
+          await receiver.observe();
         });
       }
     }
