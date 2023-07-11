@@ -3,7 +3,7 @@ export function toBinaryString(value) {
   return str.padStart(Math.ceil(str.length / 8) * 8, '0');
 }
 
-export function reverseByte(b) {
+function reverseByte(b) {
   b = (b & 0b11110000) >> 4 | (b & 0b00001111) << 4;
   b = (b & 0b11001100) >> 2 | (b & 0b00110011) << 2;
   b = (b & 0b10101010) >> 1 | (b & 0b01010101) << 1;
@@ -80,5 +80,28 @@ export class ByteView {
         }
       }
     };
+  }
+}
+
+export class MessageEncoder {
+  encode(message) {
+    const enc = new TextEncoder("utf-8");
+
+    // We send 32 bits per ASCII character:
+    //   |position| with the first bit set to 1 indicating a position
+    //   |checksum| and alignment byte for the position
+    //   |value| Non extended ASCII character
+    //   |checksum| and alignment byte for the value
+    //
+    // A checksum is the reversed complement, e.g for 0110 1000
+    // the complement will be 10010111 and reversed it will be 11101001
+    const letters = [...enc.encode(message)].flatMap((value, position) => {
+      const pos = position | 0b10000000;
+      const vPos = reverseByte(~pos);
+      const vValue = reverseByte(~value);
+      return [ pos, vPos, value, vValue ]
+    });
+
+    return new Uint8Array([...letters]);
   }
 }

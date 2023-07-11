@@ -79,7 +79,7 @@
   </body>
   <script type="module">
     import { Mandelbrot, Animator } from "./mandelbrot.js";
-    import { ByteView, reverseByte, toBinaryString } from "./binutils.js";
+    import { ByteView, MessageEncoder, toBinaryString } from "./binutils.js";
     import { BitChannelObserver } from "./bit-channel-observer.js";
 
     const mandel = new Mandelbrot(document.getElementById("mandel"));
@@ -107,28 +107,8 @@
     }
 
     async function sendMessage(msg, zero, reset, one, delay) {
-      const enc = new TextEncoder("utf-8");
-
-      // We send 32 bits per ASCII character:
-      //   |position| with the first bit set to 1 indicating a position
-      //   |checksum| and alignment byte for the position
-      //   |value| Non extended ASCII character
-      //   |checksum| and alignment byte for the value
-      //
-      // A checksum is the reversed complement, e.g for 0110 1000
-      // the complement will be 10010111 and reversed it will be 11101001
-      let text = [...enc.encode(msg)].flatMap((value, position) => {
-        const pos = position | 0b10000000;
-        const vPos = reverseByte(~pos);
-        const vValue = reverseByte(~value)
-        console.log([
-          toBinaryString(pos), toBinaryString(vPos),
-          toBinaryString(value), toBinaryString(vValue)
-        ]);
-        return [ pos, vPos, value, vValue ]
-      })
-
-      const bits = new ByteView(new Uint8Array([...text]));
+      const enc = new MessageEncoder();
+      const bits = new ByteView(enc.encode(msg));
 
       const timeout = delay => new Promise(resolve => setTimeout(resolve, delay));
 
