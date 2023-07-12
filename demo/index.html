@@ -80,6 +80,7 @@
   <script type="module">
     import { Mandelbrot, Animator } from "./mandelbrot.js";
     import { ByteView, MessageEncoder, toBinaryString } from "./binutils.js";
+    import { PressureCalibrator } from "./pressure-calibrator.js";
     import { BitChannelObserver } from "./bit-channel-observer.js";
 
     const mandel = new Mandelbrot(document.getElementById("mandel"));
@@ -99,7 +100,6 @@
     document.getElementById("scale").onchange = e => animator.setScale(event.target.value);
 
     const delay = 4_000;
-    const limits = [];
 
     String.prototype.replaceAt = function(index, ch) {
       let str = this + "□".repeat(Math.max(0, index + 1 - this.length));
@@ -271,110 +271,13 @@
         document.getElementById("wrapper").style = "display: none";
         const wakeLock = await navigator.wakeLock.request("screen");
 
-        const start = () => document.getElementById("start").click();
-        const stop = () => document.getElementById("stop").click();
-        const add = () => document.getElementById("ww_add").click();
-        const remove = () => document.getElementById("ww_sub").click();
-        let fn = add;
+        const calibrator = new PressureCalibrator(setWorkerCount);
 
-        const MEASURE_TIME = 10_000;
+        let config = await calibrator.calibrate();
+        console.log(JSON.stringify(config));
 
-        const calibrate = async () => {
-          let timerId = 0;
-          let measure = [];
-          let lastState;
-          let countDown = 2;
-
-          console.log(`Calibrating for ${MEASURE_TIME/1000}sec with ${workerCount()} workers at scale ${currentScale()}`);
-          let now = performance.now();
-
-          const report = state => {
-            let prevState = lastState;
-            lastState = state;
-            if (prevState) {
-              let lastTime = now;
-              now = performance.now();
-
-              if (!measure[workerCount()]) {
-                measure[workerCount()] = {
-                  "nominal": 0,
-                  "fair": 0,
-                  "serious": 0,
-                  "critical": 0
-                };
-              }
-              measure[workerCount()][prevState] += ((now - lastTime) / MEASURE_TIME);
-            }
-          }
-
-          let done = false;
-
-          return new Promise(resolve => {
-            return resolve({ zero: 0, reset: 5, one: 8, delay: delay});
-
-            timerId = setInterval(() => {
-
-              if (lastState) {
-                // Always inherit the latest state as you might see no changes
-                // with this worker count.
-                report(lastState);
-                console.log(`${workerCount()} workers at scale ${currentScale()}: ${JSON.stringify(measure[workerCount()], null, "  ")}`);
-                done = measure[workerCount()]["critical"] > 0.99;
-              }
-
-              fn();
-              console.log(`Calibrating for ${MEASURE_TIME/1000}sec with ${workerCount()} workers at scale ${currentScale()}`);
-
-              if (done) {
-                clearInterval(timerId);
-                calibrator.disconnect();
-
-                let result = {
-                  nominal: null, nominalPercentage: 0,
-                  fair: null, fairPercentage: 0,
-                  serious: null, seriousPercentage: 0,
-                  critical: null, criticalPercentage: 0
-                }
-
-                for (let count in measure) {
-                  let nominal = measure[count].nominal;
-                  if (nominal > result.nominalPercentage) {
-                    result.nominal = +count;
-                    result.nominalPercentage = nominal;
-                  }
-                  let fair = measure[count].fair;
-                  if (fair > result.fairPercentage) {
-                    result.fair = +count;
-                    result.fairPercentage = fair;
-                  }
-                  let serious = measure[count].serious;
-                  if (serious > result.seriousPercentage) {
-                    result.serious = +count;
-                    result.seriousPercentage = serious;
-                  }
-                  let critical = measure[count].critical;
-                  if (critical > result.criticalPercentage) {
-                    result.critical = +count;
-                    result.criticalPercentage = critical;
-                  }
-                }
-
-                console.log("calculated", JSON.stringify(result));
-                resolve({ zero: 0, reset: result.serious, one: result.critical, delay: delay});
-              }
-            }, MEASURE_TIME);
-
-            const calibrator = new PressureObserver(changes => report(changes[0].state));
-
-            calibrator.observe("cpu");
-          });
-        };
-
-        calibrate().then(async config => {
-          console.log(JSON.stringify(config));
-          sendMessage("hello world", config.zero, config.reset, config.one, config.delay);
-          await receiver.observe();
-        });
+        sendMessage("hello world", config.zero, config.reset, config.one, config.delay);
+        receiver.observe();
       }
     }
 
