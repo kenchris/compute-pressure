@@ -79,7 +79,7 @@
   </body>
   <script type="module">
     import { Mandelbrot, Animator } from "./mandelbrot.js";
-    import { ByteView, MessageEncoder, MessageDecoder, validate, toBinaryString } from "./binutils.js";
+    import { ByteView, MessageEncoder, MessageDecoder, toBinaryString, reverseByte } from "./binutils.js";
     import { PressureCalibrator } from "./pressure-calibrator.js";
     import { BitChannelObserver } from "./bit-channel-observer.js";
 
@@ -163,41 +163,18 @@
     let align = 0;
     const dec = new MessageDecoder;
 
-    const buffer = new Uint8Array(new ArrayBuffer(0, { maxByteLength: 256 })); 
-    let word = new ByteView(new ArrayBuffer(2));
+    const view = new ByteView(new ArrayBuffer(2, { maxByteLength: 256 })); 
 
-    const receiver = new BitChannelObserver(bit => {
+    const receiver = new BitChannelObserver;
+    receiver.addEventListener("bitreceived", ev => {
+      const bit = ev.detail.value;
       console.log("Received", bit);
-      word.setBit(idx, bit);
-
       document.getElementById("received").value += `${bit}`;
-
-      if (++idx % 16 !== 0) {
-        return;
-      }
-
-      // We have one word (two bytes) now!
-
-      if (!validate(word.u8[0], word.u8[1])) {
-        // Checksum for byte doesn't match.
-        // We might have gotten a wrong value, or a value too much or too little.
-        // In most cases this requires around two new bytes to find alignment.
-        console.log(`Misaligned or corrupt data, shifting to find new alignment (${++align})...`);
-        word.shift16Left(1);
-        return;
-      }
-
-      // We have a valid word (two bytes) now!
-
-      const currentLength = buffer.byteLength;
-      buffer.buffer.resize(buffer.byteLength + 2);
-      buffer.set(word.u8, currentLength)
-
-      word.clear();
-      idx = align = 0;
-
+    });
+    receiver.addEventListener("messagechange", ev => {
+      const msg = ev.detail.value;
       document.getElementById("received").value = "";
-      document.getElementById("message").value = dec.decode(buffer);
+      document.getElementById("message").value = msg;
     });
 
     const elem = document.querySelector("#status-text");
@@ -285,8 +262,11 @@
         }
         console.log(JSON.stringify(config));
 
-        //sendMessage("hello world", config.zero, config.reset, config.one, config.delay);
-        receiver.observe();
+        const runTest = false;
+        if (!runTest) {
+          sendMessage("hello world", config.zero, config.reset, config.one, config.delay);
+        }
+        receiver.observe(runTest);
       }
     }
 

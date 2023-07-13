@@ -1,12 +1,18 @@
-export class BitChannelObserver {
+import { MessageEncoder, MessageDecoder, ByteView, reverseByte } from "./binutils.js";
+
+export class BitChannelObserver extends EventTarget {
   #lastTimestamp;
   #lastState = 1;
   #millis = [0, 0, 0]; // zero, reset, one
-  #handler;
   #observer;
 
-  constructor(fn) {
-    this.#handler = fn;
+  #bitIndex = 0;
+  #align = 0;
+  #decoder = new MessageDecoder;
+  #view = new ByteView(new ArrayBuffer(2, { maxByteLength: 256 })); 
+
+  constructor() {
+    super();
     let lastValue = -1;
 
     const map = state => {
@@ -24,18 +30,34 @@ export class BitChannelObserver {
     this.#observer = new PressureObserver(changes => {
       let value = map(changes[0].state);
       if (value !== lastValue) {
-        this.#process(value);
+        this.#processRawState(value);
       }
       lastValue = value;
     });
   }
 
-  async observe() {
-    this.#lastTimestamp = performance.now();
-    return await this.#observer.observe("cpu");
+  async observe(runTest = false) {
+    if (!runTest) {
+      this.#lastTimestamp = performance.now();
+      return await this.#observer.observe("cpu");
+    }
+
+    const enc = new MessageEncoder();
+    const data = [...enc.encode("hello world")];
+    // Add some disalignment
+    const brokenData = [23, 19,
+      ...data.slice(0, 8),
+      15, 101,
+      ...data.slice(8)];
+
+    const bits = new ByteView(new Uint8Array(brokenData));
+    console.log(bits)
+    for (let bit of bits) {
+      this.#processData(bit);
+    }
   }
 
-  #process(state) {
+  #processRawState(state) {
     let start = this.#lastTimestamp;
     this.#lastTimestamp = performance.now();
     let time = (this.#lastTimestamp - start);
@@ -45,8 +67,44 @@ export class BitChannelObserver {
   
     if (this.#millis[1] > 6_000) {
       const toDispatch = this.#millis[0] > this.#millis[2] ? 0 : 1;
-      this.#handler(toDispatch);
+      this.#processData(toDispatch);
       this.#millis = [0, 0, 0];
     }
+  }
+
+  #processData(bit) {
+    this.#view.setBit(this.#bitIndex, bit);
+
+    this.dispatchEvent(new CustomEvent("bitreceived", { detail: { value: bit } }));
+
+    if (++this.#bitIndex % 16 !== 0) {
+      return;
+    }
+
+    // We have one word (two bytes) now!
+
+    const byteIndex = this.#view.buffer.byteLength - 2;
+
+    const value = this.#view.getByte(byteIndex);
+    const checksum = this.#view.getByte(byteIndex + 1);
+
+    if (value !== reverseByte(~checksum)) {
+      // Checksum for byte doesn't match.
+      // We might have gotten a wrong value, or a value too much or too little.
+      // In most cases this requires around two new bytes to find alignment.
+      console.log(`Misaligned or corrupt data, shifting to find new alignment (${++this.#align})...`);
+      //console.log(toBinaryString(view.getByte(byteIndex)), toBinaryString(view.getByte(byteIndex + 1)));
+      this.#bitIndex--;
+      this.#view.shift16Left(1, byteIndex);
+      return;
+    }
+
+    // We have a valid word (two bytes) now!
+
+    const message = this.#decoder.decode(new Uint8Array(this.#view.buffer));
+    this.#view.buffer.resize(this.#view.buffer.byteLength + 2);
+    this.#align = 0;
+
+    this.dispatchEvent(new CustomEvent("messagechange", { detail: { value: message } }));
   }
 }

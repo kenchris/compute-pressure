@@ -3,16 +3,11 @@ export function toBinaryString(value) {
   return str.padStart(Math.ceil(str.length / 8) * 8, '0');
 }
 
-function reverseByte(b) {
+export function reverseByte(b) {
   b = (b & 0b11110000) >> 4 | (b & 0b00001111) << 4;
   b = (b & 0b11001100) >> 2 | (b & 0b00110011) << 2;
   b = (b & 0b10101010) >> 1 | (b & 0b01010101) << 1;
   return b;
-}
-
-export function validate(byte, chkByte) {
-  const complement = new Uint8Array([reverseByte(~chkByte)])[0]; // we need it unsigned
-  return complement == byte;
 }
 
 export class ByteView {
@@ -125,7 +120,7 @@ export class MessageDecoder {
         position = byte & 0b01111111;
       }
 
-      if (!validate(byte, checksum)) {
+      if (byte !== reverseByte(~checksum)) {
         console.warn(`Checksum ${toBinaryString(checksum)} test failed for byte ${toBinaryString(byte)}`);
         if (isPosition && lastPosition + 1 === position) {
           console.warm(`Position ${position} appears to be correct, so we trust it.`)
@@ -134,8 +129,9 @@ export class MessageDecoder {
         }
       }
 
-      if (position >= uInt8Array.length / 4) {
-        console.warn(`Decoded position '${position}', but value seems corrupt.`);
+      if (position > uInt8Array.length / 4) {
+        console.warn(`Decoded position '${position}', but value seems corrupt.`)
+        console.log(uInt8Array.length);
         position = -1;
       }
 
