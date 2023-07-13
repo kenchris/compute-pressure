@@ -1,4 +1,4 @@
-import { MessageEncoder, MessageDecoder, ByteView, reverseByte } from "./binutils.js";
+import { MessageEncoder, MessageDecoder, BitDataView, reverseByte } from "./binutils.js";
 
 export class BitChannelObserver extends EventTarget {
   #lastTimestamp;
@@ -9,7 +9,7 @@ export class BitChannelObserver extends EventTarget {
   #bitIndex = 0;
   #align = 0;
   #decoder = new MessageDecoder;
-  #view = new ByteView(new ArrayBuffer(2, { maxByteLength: 256 })); 
+  #view = new BitDataView(new ArrayBuffer(2, { maxByteLength: 256 }));
 
   constructor() {
     super();
@@ -50,7 +50,7 @@ export class BitChannelObserver extends EventTarget {
       15, 101,
       ...data.slice(8)];
 
-    const bits = new ByteView(new Uint8Array(brokenData));
+    const bits = new BitDataView(new Uint8Array(brokenData).buffer);
     console.log(bits)
     for (let bit of bits) {
       this.#processData(bit);
@@ -61,10 +61,10 @@ export class BitChannelObserver extends EventTarget {
     let start = this.#lastTimestamp;
     this.#lastTimestamp = performance.now();
     let time = (this.#lastTimestamp - start);
-  
+
     this.#millis[this.#lastState] += time;
     this.#lastState = state;
-  
+
     if (this.#millis[1] > 6_000) {
       const toDispatch = this.#millis[0] > this.#millis[2] ? 0 : 1;
       this.#processData(toDispatch);
@@ -85,15 +85,15 @@ export class BitChannelObserver extends EventTarget {
 
     const byteIndex = this.#view.buffer.byteLength - 2;
 
-    const value = this.#view.getByte(byteIndex);
-    const checksum = this.#view.getByte(byteIndex + 1);
+    const value = this.#view.getUint8(byteIndex);
+    const checksum = this.#view.getUint8(byteIndex + 1);
 
     if (value !== reverseByte(~checksum)) {
       // Checksum for byte doesn't match.
       // We might have gotten a wrong value, or a value too much or too little.
       // In most cases this requires around two new bytes to find alignment.
       console.log(`Misaligned or corrupt data, shifting to find new alignment (${++this.#align})...`);
-      //console.log(toBinaryString(view.getByte(byteIndex)), toBinaryString(view.getByte(byteIndex + 1)));
+      //console.log(toBinaryString(view.getUint8(byteIndex)), toBinaryString(view.getUint8(byteIndex + 1)));
       this.#bitIndex--;
       this.#view.shift16Left(1, byteIndex);
       return;

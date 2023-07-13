@@ -1,6 +1,6 @@
 export function toBinaryString(value) {
   let str = (value >>> 0).toString(2);
-  return str.padStart(Math.ceil(str.length / 8) * 8, '0');
+  return '0b' + str.padStart(Math.ceil(str.length / 8) * 8, '0');
 }
 
 export function reverseByte(b) {
@@ -10,15 +10,17 @@ export function reverseByte(b) {
   return b;
 }
 
-export class ByteView {
-  constructor(buf) {
-    this.buffer = buf;
-    this.u8 = new Uint8Array(buf);
+export class BitDataView extends DataView {
+  #u8;
+
+  constructor(buffer) {
+    super(buffer);
+    this.#u8 = new Uint8Array(buffer);
     this.length = 0;
   }
 
   getBit(index) {
-    const v = this.u8[index >> 3];
+    const v = this.#u8[index >> 3];
     const offset = index & 0x7;
     return (v >> (7-offset)) & 1;
   };
@@ -27,24 +29,11 @@ export class ByteView {
     this.length = Math.max(this.length, index + 1);
     const offset = index & 0x7;
     if (value) {
-      this.u8[index >> 3] |= (0x80 >> offset);
+      this.#u8[index >> 3] |= (0x80 >> offset);
     } else {
-      this.u8[index >> 3] &= ~(0x80 >> offset);
+      this.#u8[index >> 3] &= ~(0x80 >> offset);
     }
   };
-
-  getByte(index) {
-    return this.u8[index];
-  }
-
-  setByte(index, value) {
-    this.u8[index] = value;
-  }
-
-  clear() {
-    this.length = 0;
-    this.u8.fill(0);
-  }
 
   shift16Left(amount, index = 0) {
     let view = new DataView(this.buffer);
@@ -52,19 +41,10 @@ export class ByteView {
     view.setInt16(index, value << amount, false);
   }
 
-  toString() {
-    const res = [];
-    let i = 0
-    for (; i < this.u8.length; i++) {
-      res.push(toBinaryString(this.u8[i]))
-    }
-    return res.join(" ");
-  }
-
   [Symbol.iterator]() {
     return {
       current: 0,
-      last: this.buffer.length * 8,
+      last: this.buffer.byteLength * 8,
       view: this,
 
       next() {
@@ -104,7 +84,7 @@ export class MessageEncoder {
 export class MessageDecoder {
   decode(uInt8Array) {
     const dec = new TextDecoder("utf-8");
-    const view = new ByteView(uInt8Array);
+    const view = new BitDataView(uInt8Array.buffer);
     const output = [];
 
     const POSITION_BIT = 0b10000000;

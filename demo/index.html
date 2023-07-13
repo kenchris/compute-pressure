@@ -79,7 +79,7 @@
   </body>
   <script type="module">
     import { Mandelbrot, Animator } from "./mandelbrot.js";
-    import { ByteView, MessageEncoder, MessageDecoder, toBinaryString, reverseByte } from "./binutils.js";
+    import { BitDataView, MessageEncoder, MessageDecoder, toBinaryString, reverseByte } from "./binutils.js";
     import { PressureCalibrator } from "./pressure-calibrator.js";
     import { BitChannelObserver } from "./bit-channel-observer.js";
 
@@ -108,7 +108,7 @@
 
     async function sendMessage(msg, zero, reset, one, delay) {
       const enc = new MessageEncoder();
-      const bits = new ByteView(enc.encode(msg));
+      const bits = new BitDataView(enc.encode(msg).buffer);
 
       const timeout = delay => new Promise(resolve => setTimeout(resolve, delay));
 
@@ -129,8 +129,8 @@
           }
           document.getElementById("sent").value += `${bit}`;
 
-          let byte = bits.u8[byteIndex];
-          let chkByte = bits.u8[byteIndex + 1];
+          let byte = bits.getUint8(byteIndex);
+          let chkByte = bits.getUint8(byteIndex + 1);
           switch (dwordIndex) {
             case 0: {
               let pos = byte - 128;
@@ -163,7 +163,7 @@
     let align = 0;
     const dec = new MessageDecoder;
 
-    const view = new ByteView(new ArrayBuffer(2, { maxByteLength: 256 })); 
+    const view = new BitDataView(new ArrayBuffer(2, { maxByteLength: 256 }));
 
     const receiver = new BitChannelObserver;
     receiver.addEventListener("bitreceived", ev => {
@@ -262,7 +262,7 @@
         }
         console.log(JSON.stringify(config));
 
-        const runTest = false;
+        const runTest = new URLSearchParams(document.location.search).has("test");
         if (!runTest) {
           sendMessage("hello world", config.zero, config.reset, config.one, config.delay);
         }
