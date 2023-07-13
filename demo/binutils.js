@@ -10,6 +10,11 @@ function reverseByte(b) {
   return b;
 }
 
+export function validate(byte, chkByte) {
+  const complement = new Uint8Array([reverseByte(~chkByte)])[0]; // we need it unsigned
+  return complement == byte;
+}
+
 export class ByteView {
   constructor(buf) {
     this.buffer = buf;
@@ -39,11 +44,6 @@ export class ByteView {
 
   setByte(index, value) {
     this.u8[index] = value;
-  }
-
-  validate() {
-    const complement = new Uint8Array([reverseByte(~this.u8[1])])[0]; // we need it unsigned
-    return complement == this.u8[0];
   }
 
   clear() {
@@ -105,3 +105,72 @@ export class MessageEncoder {
     return new Uint8Array([...letters]);
   }
 }
+
+export class MessageDecoder {
+  decode(uInt8Array) {
+    const dec = new TextDecoder("utf-8");
+    const view = new ByteView(uInt8Array);
+    const output = [];
+
+    const POSITION_BIT = 0b10000000;
+    let position = 0;
+
+    for (let i = 0; i < uInt8Array.length; i += 2) {
+      const byte = uInt8Array[i];
+      const checksum = uInt8Array[i + 1];
+
+      const isPosition = (byte & POSITION_BIT) === POSITION_BIT;
+      const lastPosition = position;
+      if (isPosition) {
+        position = byte & 0b01111111;
+      }
+
+      if (!validate(byte, checksum)) {
+        console.warn(`Checksum ${toBinaryString(checksum)} test failed for byte ${toBinaryString(byte)}`);
+        if (isPosition && lastPosition + 1 === position) {
+          console.warm(`Position ${position} appears to be correct, so we trust it.`)
+        } else {
+          continue;
+        }
+      }
+
+      if (position >= uInt8Array.length / 4) {
+        console.warn(`Decoded position '${position}', but value seems corrupt.`);
+        position = -1;
+      }
+
+      if (!isPosition) {
+        let char = dec.decode(new Uint8Array([byte]));
+        if (position < 0) {
+          console.warn(`Decoded '${char}', but character position is unknown.`);
+          continue;
+        }
+        output[position] = char;
+        position = -1;
+      }
+    }
+
+    return [...output.values()].map(v => v ? v : '\ufffd').join('');
+  }
+}
+
+//let enc = new MessageEncoder();
+//let dec = new MessageDecoder();
+
+//let encoded = enc.encode("hello world");
+//console.log(encoded);
+
+// h 0 1 2 3
+// e 4 5 6 7
+// l 8 9 10 11
+// l 12 13 14 15
+// o 16 17 18 19
+// _ 20 21 22 23
+// w 24 25 26 27
+
+// encoded[5] = 0b01001111; // break position checksum
+// encoded[8] = 0b01001111; // break position 2 (l)
+// encoded[27] = 0b01001111; // break char 'w'
+
+// console.log(encoded);
+// console.log(dec.decode(encoded));

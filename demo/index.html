@@ -47,7 +47,7 @@
       <label>API Status:</label> <span id="status-text">not available</span>
     </div>
     <input type=button id="switch" value="Start"></input>
-    <input type=button id="calibrate" value="Calibrate"></input> <span id="rounds"></span>
+    <input type=button id="calibrate" value="Broadcast"></input> <input id="skip-calibration" type="checkbox">Skip calibration</input>
     <div></div>
       <span id="emoji">
         😴
@@ -79,7 +79,7 @@
   </body>
   <script type="module">
     import { Mandelbrot, Animator } from "./mandelbrot.js";
-    import { ByteView, MessageEncoder, toBinaryString } from "./binutils.js";
+    import { ByteView, MessageEncoder, MessageDecoder, validate, toBinaryString } from "./binutils.js";
     import { PressureCalibrator } from "./pressure-calibrator.js";
     import { BitChannelObserver } from "./bit-channel-observer.js";
 
@@ -159,45 +159,45 @@
       }
     }
 
-    let msgReceived = "";
-    let recView = new ByteView(new ArrayBuffer(2));
     let idx = 0;
     let align = 0;
-    let position = -1;
-    const dec = new TextDecoder("utf-8");
+    const dec = new MessageDecoder;
+
+    const buffer = new Uint8Array(new ArrayBuffer(0, { maxByteLength: 256 })); 
+    let word = new ByteView(new ArrayBuffer(2));
 
     const receiver = new BitChannelObserver(bit => {
       console.log("Received", bit);
-      recView.setBit(idx, bit);
+      word.setBit(idx, bit);
 
       document.getElementById("received").value += `${bit}`;
 
-      if (idx !== 15) {
-        idx++;
+      if (++idx % 16 !== 0) {
         return;
       }
 
-      if (recView.validate()) {
-        if (recView.getBit(0) === 1) { // Indicates position, we ignore extended ASCII
-          recView.setBit(0, 0);
-          position = recView.u8[0];
-          console.log(`Received position ${position}`);
-          // Resize string if chars are missing.
-          msgReceived = msgReceived.replaceAt(position, "");
-        } else if (position > -1) {
-          const res = dec.decode(recView.buffer.slice(0, 1));
-          msgReceived = msgReceived.replaceAt(position, res);
-          console.log(`char: ${res} at pos: ${position}, msg: "${msgReceived}"`);
-          position = -1;
-        }
-        document.getElementById("message").value = msgReceived;
-        recView.clear();
-        idx = align = 0;
-        document.getElementById("received").value = "";
-      } else {
+      // We have one word (two bytes) now!
+
+      if (!validate(word.u8[0], word.u8[1])) {
+        // Checksum for byte doesn't match.
+        // We might have gotten a wrong value, or a value too much or too little.
+        // In most cases this requires around two new bytes to find alignment.
         console.log(`Misaligned or corrupt data, shifting to find new alignment (${++align})...`);
-        recView.shift16Left(1);
+        word.shift16Left(1);
+        return;
       }
+
+      // We have a valid word (two bytes) now!
+
+      const currentLength = buffer.byteLength;
+      buffer.buffer.resize(buffer.byteLength + 2);
+      buffer.set(word.u8, currentLength)
+
+      word.clear();
+      idx = align = 0;
+
+      document.getElementById("received").value = "";
+      document.getElementById("message").value = dec.decode(buffer);
     });
 
     const elem = document.querySelector("#status-text");
@@ -265,6 +265,12 @@
         }
       };
 
+      const skipCalibrationBtn = document.getElementById("skip-calibration");
+      skipCalibrationBtn.checked = sessionStorage.getItem("skip-calibration") ?? false;
+      skipCalibrationBtn.onclick = ev => {
+        sessionStorage.setItem("skip-calibration", ev.target.checked);
+      }
+
       const calibrateBtn = document.getElementById("calibrate");
       calibrateBtn.onclick = async ev => {
         calibrateBtn.disabled = true;
@@ -273,10 +279,13 @@
 
         const calibrator = new PressureCalibrator(setWorkerCount);
 
-        let config = await calibrator.calibrate();
+        let config = { zero: 0, reset: 5, one: 8, delay: delay};
+        if (!skipCalibrationBtn.checked) {
+          config = await calibrator.calibrate()
+        }
         console.log(JSON.stringify(config));
 
-        sendMessage("hello world", config.zero, config.reset, config.one, config.delay);
+        //sendMessage("hello world", config.zero, config.reset, config.one, config.delay);
         receiver.observe();
       }
     }
