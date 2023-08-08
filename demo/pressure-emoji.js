@@ -47,7 +47,7 @@ function html(strings, ...values) {
       flex-direction: row;
       flex-wrap: nowrap;
       align-items: center;
-    } 
+    }
 
     #emoji {
       font-size: 8em;

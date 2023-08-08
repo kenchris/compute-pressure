@@ -30,7 +30,7 @@ export class BitChannelBroadcaster extends EventTarget {
           if (dwordIndex === 0) {
             let pos = byte - 128;
             this.dispatchEvent(new CustomEvent("datachange", {
-              detail: { 
+              detail: {
                 type: "position",
                 value: pos,
                 data: new Uint8Array([byte, chkByte])
@@ -40,7 +40,7 @@ export class BitChannelBroadcaster extends EventTarget {
             const dec = new TextDecoder("utf-8");
             const ch = dec.decode(bits.buffer.slice(byteIndex, byteIndex + 1));
             this.dispatchEvent(new CustomEvent("datachange", {
-              detail: { 
+              detail: {
                 type: "character",
                 value: ch,
                 data: new Uint8Array([byte, chkByte])
