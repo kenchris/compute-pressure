@@ -1,119 +1,120 @@
 function html(strings, ...values) {
-    return values.reduce((finalString, value, index) => {
-      return `${finalString}${value}${strings[index + 1]}`
-    }, strings[0])
-  }
+  return values.reduce((finalString, value, index) => {
+    return `${finalString}${value}${strings[index + 1]}`
+  }, strings[0])
+}
 
-  function css(strings, ...values) {
-    const sheet = new CSSStyleSheet();
-    sheet.replaceSync(values.reduce((finalString, value, index) => {
-      return `${finalString}${value}${strings[index + 1]}`
-    }, strings[0]));
-    return sheet;
-  }
+function css(strings, ...values) {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(values.reduce((finalString, value, index) => {
+    return `${finalString}${value}${strings[index + 1]}`
+  }, strings[0]));
+  return sheet;
+}
 
-  const template = document.createElement('template');
-  template.innerHTML = html`
-    <div id="emoji-display">
-      <span id="emoji">😴</span>
-      <div id="emoji-controls">
-        <div id="switch">▶️</div>
-        <span id="label">Not observing</span>
-      </div>
+const template = document.createElement('template');
+template.innerHTML = html`
+  <div id="emoji-display">
+    <span id="emoji">😴</span>
+    <div id="emoji-controls">
+      <div id="switch">▶️</div>
+      <span id="label">Not observing</span>
     </div>
-  `;
-  const sheet = css`
-    #emoji-display {
-      width: 220px;
-      display: flex;
-      flex-direction: column;
-      flex-wrap: nowrap;
-      align-items: center;
-      border: 2px solid #ccc;
-      padding: 16px;
-      position: relative;
-    }
+  </div>
+`;
 
-    #switch {
-      position: absolute;
-      left: 3px;
-      bottom: 6px;
-      font-size: xx-large;
-      user-select: none;
-    }
+const sheet = css`
+  #emoji-display {
+    width: 220px;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: center;
+    border: 2px solid #ccc;
+    padding: 16px;
+    position: relative;
+  }
 
-    #emoji-controls {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-      align-items: center;
-    }
+  #switch {
+    position: absolute;
+    left: 3px;
+    bottom: 6px;
+    font-size: xx-large;
+    user-select: none;
+  }
 
-    #emoji {
-      font-size: 8em;
-      margin-bottom: 16px;
-    }
-  `;
+  #emoji-controls {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+  }
 
-  class PressureEmoji extends HTMLElement {
-    constructor() {
-      super();
-      this.attachShadow({ 'mode': 'open' });
-      this.shadowRoot.appendChild(template.content.cloneNode(true));
-      this.shadowRoot.adoptedStyleSheets = [sheet];
-    }
+  #emoji {
+    font-size: 8em;
+    margin-bottom: 16px;
+  }
+`;
 
-    connectedCallback() {
-      const emoji = this.shadowRoot.getElementById("emoji");
-      const label = this.shadowRoot.getElementById("label");
+class PressureEmoji extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ 'mode': 'open' });
+    this.shadowRoot.appendChild(template.content.cloneNode(true));
+    this.shadowRoot.adoptedStyleSheets = [sheet];
+  }
 
-      const observer = new PressureObserver(changes => {
-        switch(changes[0].state) {
-          case "nominal":
-            emoji.innerText = "😌";
-            label.innerText = "Nominal pressure";
-            break;
-          case "fair":
-            emoji.innerText = "😄";
-            label.innerText = "Fair pressure";
-            break;
-          case "serious":
-            emoji.innerText = "😖";
-            label.innerText = "Serious pressure";
-            break;
-          case "critical":
-            emoji.innerText = "🥵";
-            label.innerText = "Critical pressure";
-            break;
-          default:
-            emoji.innerText = "😴";
-            label.innerText = "Not observing";
-        }
-      });
+  connectedCallback() {
+    const emoji = this.shadowRoot.getElementById("emoji");
+    const label = this.shadowRoot.getElementById("label");
 
-      const btn = this.shadowRoot.getElementById("switch");
-      btn.active = false;
-      btn.disabled = false;
-      btn.onclick = async ev => {
-        if (ev.target.disabled) {
-          return;
-        }
-        console.log(btn, ev.target)
-        if (btn.active == false) {
-          btn.disabled = true;
-          await observer.observe("cpu");
-          btn.active = true;
-          btn.innerText = "⏹️";
-          console.log("here", ev.target, ev.currentTarget)
-          btn.disabled = false;
-        } else {
-          observer.unobserve("cpu");
-          btn.active = false;
-          btn.innerText = "▶️";
+    const observer = new PressureObserver(changes => {
+      switch(changes[0].state) {
+        case "nominal":
+          emoji.innerText = "😌";
+          label.innerText = "Nominal pressure";
+          break;
+        case "fair":
+          emoji.innerText = "😄";
+          label.innerText = "Fair pressure";
+          break;
+        case "serious":
+          emoji.innerText = "😖";
+          label.innerText = "Serious pressure";
+          break;
+        case "critical":
+          emoji.innerText = "🥵";
+          label.innerText = "Critical pressure";
+          break;
+        default:
           emoji.innerText = "😴";
           label.innerText = "Not observing";
-        }
-      };
-    }
+      }
+    });
+
+    const btn = this.shadowRoot.getElementById("switch");
+    btn.active = false;
+    btn.disabled = false;
+    btn.onclick = async ev => {
+      if (ev.target.disabled) {
+        return;
+      }
+      console.log(btn, ev.target)
+      if (btn.active == false) {
+        btn.disabled = true;
+        await observer.observe("cpu");
+        btn.active = true;
+        btn.innerText = "⏹️";
+        console.log("here", ev.target, ev.currentTarget)
+        btn.disabled = false;
+      } else {
+        observer.unobserve("cpu");
+        btn.active = false;
+        btn.innerText = "▶️";
+        emoji.innerText = "😴";
+        label.innerText = "Not observing";
+      }
+    };
   }
-  customElements.define("pressure-emoji", PressureEmoji);
+}
+customElements.define("pressure-emoji", PressureEmoji);
