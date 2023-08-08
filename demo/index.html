@@ -15,15 +15,13 @@
     #status {
       margin-bottom: 1em;
     }
-    .enabled {
-      color: green;
-    }
+
     .disabled {
       color: red;
     }
 
-    #emoji {
-      font-size: 10em;
+    .hidden {
+      display: none;
     }
 
     #wrapper {
@@ -41,41 +39,37 @@
       font-size: 8em;
     }
   </style>
+  <script src="pressure-emoji.js" type="module">
+  </script>
   <body>
     <h1>Compute Pressure demo</h1>
-    <div id="status">
-      <label>API Status:</label> <span id="status-text">not available</span>
+    <div id="status-text" class="disabled">This browser doesn't support the Compute Pressure API</div>
+    <div id="content" class="hidden">
+      <input type=button id="calibrate" value="Broadcast"></input> <input id="skip-calibration" type="checkbox">Skip calibration</input>
+      <br><br>
+      <pressure-emoji></pressure-emoji>
+      <br><br>
+      <h1>Artificial pressure</h1>
+      <div>Add pressure in parallel, by adding workers.</div>
+      <br>
+      <div id="wrapper" width="600" height="400">
+        <canvas id="mandel" width="600" height="400"></canvas>
+        <div id="counter">0</div>
+      </div>
+      <br>
+      <button id="start">Start simulation</button>
+      <button id="stop">Stop simulation</button>
+      <button id="ww_add">Add worker</button>
+      <button id="ww_sub">Remove worker</button>
+      <br>
+      <input id="scale" type="range" min="0.1" max="1" value="1" step="0.1">
+      <br>
+      <span id="what">Unknown</span>
+      <br>
+      <input id="sent" type="text"><input id="received" type="text">
+      <br>
+      <input id="message" type="text">
     </div>
-    <input type=button id="switch" value="Start"></input>
-    <input type=button id="calibrate" value="Broadcast"></input> <input id="skip-calibration" type="checkbox">Skip calibration</input>
-    <div></div>
-      <span id="emoji">
-        😴
-      </span>
-      <span id="label">Not observing</span>
-    </div>
-
-    <br><br>
-    <h1>Mandelbrot simulation</h1>
-    <div>Start to create artificial pressure, add workers to increase further.</div>
-    <br>
-    <div id="wrapper" width="600" height="400">
-      <canvas id="mandel" width="600" height="400"></canvas>
-      <div id="counter">0</div>
-    </div>
-    <br>
-    <button id="start">Start simulation</button>
-    <button id="stop">Stop simulation</button>
-    <button id="ww_add">Add worker</button>
-    <button id="ww_sub">Remove worker</button>
-    <br>
-    <input id="scale" type="range" min="0.1" max="1" value="1" step="0.1">
-    <br>
-    <span id="what">Unknown</span>
-    <br>
-    <input id="sent" type="text"><input id="received" type="text">
-    <br>
-    <input id="message" type="text">
   </body>
   <script type="module">
     import { Mandelbrot, Animator } from "./mandelbrot.js";
@@ -131,10 +125,6 @@
       document.getElementById("message").value = msg;
     });
 
-    const elem = document.querySelector("#status-text");
-
-    const emoji = document.getElementById("emoji");
-    const label = document.getElementById("label");
     const canvas = document.getElementById("mandel");
     const counter = document.getElementById("counter");
 
@@ -157,45 +147,6 @@
     }
 
     const run = () => {
-      const observer = new PressureObserver(changes => {
-        switch(changes[0].state) {
-          case "nominal":
-            emoji.innerText = "😌";
-            label.innerText = "Nominal pressure";
-            break;
-          case "fair":
-            emoji.innerText = "😄";
-            label.innerText = "Fair pressure";
-            break;
-          case "serious":
-            emoji.innerText = "😖";
-            label.innerText = "Serious pressure";
-            break;
-          case "critical":
-            emoji.innerText = "🥵";
-            label.innerText = "Critical pressure";
-            break;
-          default:
-            emoji.innerText = "😴";
-            label.innerText = "Not observing";
-        }
-      });
-
-      const btn = document.getElementById("switch");
-      btn.onclick = async ev => {
-        if (ev.target.value == "Start") {
-          ev.target.disabled = true;
-          await observer.observe("cpu");
-          ev.target.value = "Stop";
-          ev.target.disabled = false;
-        } else {
-          observer.unobserve("cpu");
-          ev.target.value = "Start";
-          emoji.innerText = "😴";
-          label.innerText = "Not observing";
-        }
-      };
-
       const skipCalibrationBtn = document.getElementById("skip-calibration");
       skipCalibrationBtn.checked = sessionStorage.getItem("skip-calibration") ?? false;
       skipCalibrationBtn.onclick = ev => {
@@ -224,12 +175,9 @@
       }
     }
 
-    if (!("PressureObserver" in window)) {
-      elem.innerText = "not available";
-      elem.classList.add("disabled");
-    } else {
-      elem.innerText = "enabled";
-      elem.classList.add("enabled");
+    if ("PressureObserver" in window) {
+      document.querySelector("#status-text").classList.add("hidden");
+      document.querySelector("#content").classList.remove("hidden");
       run();
     }
   </script>
