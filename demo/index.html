@@ -23,21 +23,6 @@
     .hidden {
       display: none;
     }
-
-    #wrapper {
-      width: 600px;
-      height: 400px;
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    #wrapper > div {
-      position: absolute;
-      color: white;
-      font-size: 8em;
-    }
   </style>
   <script src="pressure-emoji.js" type="module"></script>
   <script src="mandelbrot-player.js" type="module"></script>
@@ -111,7 +96,7 @@
         document.getElementById("player").style = "display: none";
         const wakeLock = await navigator.wakeLock.request("screen");
 
-        const calibrator = new PressureCalibrator(player.setWorkerCount.bind(pla));
+        const calibrator = new PressureCalibrator(player.setWorkerCount.bind(player));
 
         let calibration = { zero: 0, reset: 5, one: 8, delay: delay};
         if (!skipCalibrationBtn.checked) {
