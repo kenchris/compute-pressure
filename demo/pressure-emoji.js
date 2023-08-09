@@ -1,16 +1,4 @@
-function html(strings, ...values) {
-  return values.reduce((finalString, value, index) => {
-    return `${finalString}${value}${strings[index + 1]}`
-  }, strings[0])
-}
-
-function css(strings, ...values) {
-  const sheet = new CSSStyleSheet();
-  sheet.replaceSync(values.reduce((finalString, value, index) => {
-    return `${finalString}${value}${strings[index + 1]}`
-  }, strings[0]));
-  return sheet;
-}
+import { html, css } from "./wc-utils.js";
 
 const template = document.createElement('template');
 template.innerHTML = html`
@@ -99,13 +87,11 @@ class PressureEmoji extends HTMLElement {
       if (ev.target.disabled) {
         return;
       }
-      console.log(btn, ev.target)
       if (btn.active == false) {
         btn.disabled = true;
         await observer.observe("cpu");
         btn.active = true;
         btn.innerText = "⏹️";
-        console.log("here", ev.target, ev.currentTarget)
         btn.disabled = false;
       } else {
         observer.unobserve("cpu");

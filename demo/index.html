@@ -39,8 +39,8 @@
       font-size: 8em;
     }
   </style>
-  <script src="pressure-emoji.js" type="module">
-  </script>
+  <script src="pressure-emoji.js" type="module"></script>
+  <script src="mandelbrot-player.js" type="module"></script>
   <body>
     <h1>Compute Pressure demo</h1>
     <div id="status-text" class="disabled">This browser doesn't support the Compute Pressure API</div>
@@ -52,10 +52,7 @@
       <h1>Artificial pressure</h1>
       <div>Add pressure in parallel, by adding workers.</div>
       <br>
-      <div id="wrapper" width="600" height="400">
-        <canvas id="mandel" width="600" height="400"></canvas>
-        <div id="counter">0</div>
-      </div>
+      <mandelbrot-player id="player"></mandelbrot-player>
       <br>
       <button id="start">Start simulation</button>
       <button id="stop">Stop simulation</button>
@@ -72,31 +69,21 @@
     </div>
   </body>
   <script type="module">
-    import { Mandelbrot, Animator } from "./mandelbrot.js";
     import { BitDataView, MessageEncoder, MessageDecoder, toBinaryString, reverseByte } from "./binutils.js";
     import { PressureCalibrator } from "./pressure-calibrator.js";
     import { BitChannelObserver } from "./bit-channel-observer.js";
     import { BitChannelBroadcaster } from "./bit-channel-broadcaster.js";
 
-    const mandel = new Mandelbrot(document.getElementById("mandel"));
-    const animator = new Animator(mandel);
-
-    const setWorkerCount = count => {
-      animator.setWorkerCount(count);
-      animateCounter();
-    }
-    const workerCount = () => animator.workerCount();
-    const currentScale = () => animator.currentScale();
-
-    document.getElementById("start").onclick = () => setWorkerCount(1);
-    document.getElementById("stop").onclick = () => setWorkerCount(0);
-    document.getElementById("ww_add").onclick = () => setWorkerCount(workerCount() + 1);
-    document.getElementById("ww_sub").onclick = () => setWorkerCount(workerCount() - 1);
-    document.getElementById("scale").onchange = e => animator.setScale(event.target.value);
+    const player = document.getElementById("player");
+    document.getElementById("start").onclick = () => player.setWorkerCount(1);
+    document.getElementById("stop").onclick = () => player.setWorkerCount(0);
+    document.getElementById("ww_add").onclick = () => player.setWorkerCount(player.workerCount() + 1);
+    document.getElementById("ww_sub").onclick = () => player.setWorkerCount(player.workerCount() - 1);
+    document.getElementById("scale").onchange = e => player.setScale(event.target.value);
 
     const delay = 4_000;
 
-    const broadcaster = new BitChannelBroadcaster(setWorkerCount);
+    const broadcaster = new BitChannelBroadcaster(player.setWorkerCount.bind(player));
     broadcaster.addEventListener("bitsent", ev => {
       const bit = ev.detail.value;
       document.getElementById("sent").value += `${bit}`;
@@ -125,27 +112,6 @@
       document.getElementById("message").value = msg;
     });
 
-    const canvas = document.getElementById("mandel");
-    const counter = document.getElementById("counter");
-
-    const animateCounter = () => {
-      const el = document.createElement("div");
-      counter.innerText = workerCount();
-      el.innerText = workerCount();
-      canvas.insertAdjacentElement("afterend", el);
-
-      const animation = [
-        { opacity: 1, transform: 'translateY(0px) translateX(0px) scale(1)' },
-        { opacity: 0, transform: `translateY(-200px) translateX(${Math.random() * 300 -150}px) scale(0.4)` }
-      ];
-
-      const timing = {
-        duration: 600,
-        iterations: 1,
-      }
-      el.animate(animation, timing).finished.then(() => el.remove());
-    }
-
     const run = () => {
       const skipCalibrationBtn = document.getElementById("skip-calibration");
       skipCalibrationBtn.checked = sessionStorage.getItem("skip-calibration") ?? false;
@@ -156,10 +122,10 @@
       const calibrateBtn = document.getElementById("calibrate");
       calibrateBtn.onclick = async ev => {
         calibrateBtn.disabled = true;
-        document.getElementById("wrapper").style = "display: none";
+        document.getElementById("player").style = "display: none";
         const wakeLock = await navigator.wakeLock.request("screen");
 
-        const calibrator = new PressureCalibrator(setWorkerCount);
+        const calibrator = new PressureCalibrator(player.setWorkerCount.bind(player));
 
         let calibration = { zero: 0, reset: 5, one: 8, delay: delay};
         if (!skipCalibrationBtn.checked) {
