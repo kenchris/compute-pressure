@@ -94,7 +94,7 @@ class MandelbrotPlayer extends HTMLElement {
       updateToggle();
     }
     this.shadowRoot.getElementById("minus").onclick = () => {
-      this.setWorkerCount(this.workerCount() - 1);
+      this.setWorkerCount(Math.max(0, this.workerCount() - 1));
       updateToggle();
     }
 
