@@ -54,13 +54,6 @@
       <br>
       <mandelbrot-player id="player"></mandelbrot-player>
       <br>
-      <button id="start">Start simulation</button>
-      <button id="stop">Stop simulation</button>
-      <button id="ww_add">Add worker</button>
-      <button id="ww_sub">Remove worker</button>
-      <br>
-      <input id="scale" type="range" min="0.1" max="1" value="1" step="0.1">
-      <br>
       <span id="what">Unknown</span>
       <br>
       <input id="sent" type="text"><input id="received" type="text">
@@ -73,13 +66,6 @@
     import { PressureCalibrator } from "./pressure-calibrator.js";
     import { BitChannelObserver } from "./bit-channel-observer.js";
     import { BitChannelBroadcaster } from "./bit-channel-broadcaster.js";
-
-    const player = document.getElementById("player");
-    document.getElementById("start").onclick = () => player.setWorkerCount(1);
-    document.getElementById("stop").onclick = () => player.setWorkerCount(0);
-    document.getElementById("ww_add").onclick = () => player.setWorkerCount(player.workerCount() + 1);
-    document.getElementById("ww_sub").onclick = () => player.setWorkerCount(player.workerCount() - 1);
-    document.getElementById("scale").onchange = e => player.setScale(event.target.value);
 
     const delay = 4_000;
 
@@ -125,7 +111,7 @@
         document.getElementById("player").style = "display: none";
         const wakeLock = await navigator.wakeLock.request("screen");
 
-        const calibrator = new PressureCalibrator(player.setWorkerCount.bind(player));
+        const calibrator = new PressureCalibrator(player.setWorkerCount.bind(pla));
 
         let calibration = { zero: 0, reset: 5, one: 8, delay: delay};
         if (!skipCalibrationBtn.checked) {
