@@ -104,6 +104,10 @@ class MandelbrotPlayer extends HTMLElement {
   connectedCallback() {
     this.#canvas = new Mandelbrot(this.shadowRoot.getElementById("mandel"));
     this.#animator = new Animator(this.#canvas);
+
+    const input = this.shadowRoot.querySelector("#scale");
+    input.value = Number(sessionStorage.getItem(`${input.tagName}@scale`) ?? '');
+    this.setScale(input.value);
   }
 
   scale() {
@@ -113,6 +117,8 @@ class MandelbrotPlayer extends HTMLElement {
   setScale(scale) {
     this.shadowRoot.getElementById("scale-value").innerText = Number(scale).toFixed(1);
     this.#animator.setScale(scale);
+    const input = this.shadowRoot.querySelector("#scale");
+    sessionStorage.setItem(`${input.tagName}@scale`, scale);
   }
 
   workerCount() {
