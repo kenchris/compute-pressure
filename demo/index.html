@@ -61,45 +61,83 @@
     .hidden {
       display: none;
     }
+
+    #card-list {
+      display: flex;
+      flex-wrap: wrap;
+    }
   </style>
   <script src="pressure-emoji.js" type="module"></script>
   <script src="mandelbrot-player.js" type="module"></script>
   <body>
     <div id="status-text" class="disabled hidden">This browser doesn't support the Compute Pressure API</div>
-    <details open class="card">
-      <summary>Compute Pressure demo</summary>
-      <div>Press play to have the emoji react to the pressure.</div><br><br>
-      <div class="content">
-        <pressure-emoji></pressure-emoji>
-      </div>
-    </details>
-
-    <details open class="card">
-      <summary>Artificial pressure</summary>
-      <div>Add pressure in parallel, by adding workers.</div><br><br>
-      <div class="content">
-        <mandelbrot-player id="player"></mandelbrot-player>
-      </div>
-    </details>
-
-    <details open class="card">
-      <summary>Side-Channel attack test</summary>
-      <div class="">
-        <div>
-          <input type=button id="calibrate" value="Broadcast"></input> <input id="skip-calibration" type="checkbox">Skip calibration</input>
+    <div id="card-list">
+      <details open class="card" draggable="true">
+        <summary>Compute Pressure demo</summary>
+        <div>Press play to have the emoji react to the pressure.</div><br><br>
+        <div class="content">
+          <pressure-emoji></pressure-emoji>
         </div>
-        <br><br>
-        <span id="what">Unknown</span>
-        <input id="sent" type="text"><input id="received" type="text">
-        <input id="message" type="text">
-      </div>
-    </details>
+      </details>
+
+      <details open class="card" draggable="true">
+        <summary>Artificial pressure</summary>
+        <div>Add pressure in parallel, by adding workers.</div><br><br>
+        <div class="content">
+          <mandelbrot-player id="player"></mandelbrot-player>
+        </div>
+      </details>
+
+      <details open class="card" draggable="true">
+        <summary>Side-Channel attack test</summary>
+        <div class="">
+          <div>
+            <input type=button id="calibrate" value="Broadcast"></input> <input id="skip-calibration" type="checkbox">Skip calibration</input>
+          </div>
+          <br><br>
+          <span id="what">Unknown</span>
+          <input id="sent" type="text"><input id="received" type="text">
+          <input id="message" type="text">
+        </div>
+      </details>
+    </ul>
   </body>
   <script type="module">
     import { BitDataView, MessageEncoder, MessageDecoder, toBinaryString, reverseByte } from "./binutils.js";
     import { PressureCalibrator } from "./pressure-calibrator.js";
     import { BitChannelObserver } from "./bit-channel-observer.js";
     import { BitChannelBroadcaster } from "./bit-channel-broadcaster.js";
+
+    const items = document.querySelectorAll(".card");
+    items.forEach(item => {
+      item.addEventListener("dragstart", () => item.classList.add("dragging"));
+      item.addEventListener("dragend", () => item.classList.remove("dragging"));
+    });
+
+    function calcDistance(elem, mouseX, mouseY) {
+      return Math.floor(Math.sqrt(
+        Math.pow(mouseX - (elem.offsetLeft+(elem.clientWidth / 2)), 2)
+        + Math.pow(mouseY - (elem.offsetTop+(elem.clientHeight / 2)), 2)));
+    }
+
+    const container = document.querySelector("#card-list");
+    container.addEventListener("dragenter", e => e.preventDefault());
+    container.addEventListener("dragover", e => {
+      e.preventDefault();
+
+      const items = document.querySelectorAll(".card");
+      const draggingItem = document.querySelector(".dragging");
+      const dists = Array.from(items).map(item => calcDistance(item, e.clientX, e.clientY));
+      const targetIndex = dists.indexOf(Math.min(...dists));
+      const draggingIndex = Array.from(items).indexOf(draggingItem);
+      const targetItem = items[targetIndex];
+
+      if (draggingIndex > targetIndex) {
+        targetItem.before(draggingItem);
+      } else if (draggingIndex < targetIndex) {
+        targetItem.after(draggingItem);
+      }
+    });
 
     const delay = 4_000;
 
