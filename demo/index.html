@@ -54,6 +54,15 @@
       font-weight: bold;
     }
 
+    #card-list {
+      display: flex;
+      flex-wrap: wrap;
+    }
+
+    .invisible {
+      opacity: 0;
+    }
+
     .disabled {
       color: red;
     }
@@ -61,18 +70,13 @@
     .hidden {
       display: none;
     }
-
-    #card-list {
-      display: flex;
-      flex-wrap: wrap;
-    }
   </style>
   <script src="pressure-emoji.js" type="module"></script>
   <script src="mandelbrot-player.js" type="module"></script>
   <body>
     <div id="status-text" class="disabled hidden">This browser doesn't support the Compute Pressure API</div>
-    <div id="card-list">
-      <details open class="card" draggable="true">
+    <div id="card-list" class="invisible">
+      <details open class="card" draggable="true" data-key="0">
         <summary>Compute Pressure demo</summary>
         <div>Press play to have the emoji react to the pressure.</div><br><br>
         <div class="content">
@@ -80,7 +84,7 @@
         </div>
       </details>
 
-      <details open class="card" draggable="true">
+      <details open class="card" draggable="true" data-key="1">
         <summary>Artificial pressure</summary>
         <div>Add pressure in parallel, by adding workers.</div><br><br>
         <div class="content">
@@ -88,7 +92,7 @@
         </div>
       </details>
 
-      <details open class="card" draggable="true">
+      <details open class="card" draggable="true" data-key="2">
         <summary>Side-Channel attack test</summary>
         <div class="">
           <div>
@@ -100,7 +104,7 @@
           <input id="message" type="text">
         </div>
       </details>
-    </ul>
+    </div>
   </body>
   <script type="module">
     import { BitDataView, MessageEncoder, MessageDecoder, toBinaryString, reverseByte } from "./binutils.js";
@@ -109,9 +113,29 @@
     import { BitChannelBroadcaster } from "./bit-channel-broadcaster.js";
 
     const items = document.querySelectorAll(".card");
+    const parent = document.querySelector("#card-list");
+
+    const order = sessionStorage.getItem("order");
+    if (order) {
+      const copy = [];
+
+      document.querySelectorAll(".card").forEach(item => {
+        copy.push(parent.removeChild(item));
+      })
+
+      for (let index of order.split(",")) {
+        parent.appendChild(copy[index]);
+      }
+    }
+    parent.classList.remove("invisible");
+
     items.forEach(item => {
       item.addEventListener("dragstart", () => item.classList.add("dragging"));
-      item.addEventListener("dragend", () => item.classList.remove("dragging"));
+      item.addEventListener("dragend", () => {
+        item.classList.remove("dragging")
+        const str = Array.from(document.querySelectorAll(".card")).map(item => item.dataset.key).join(",");
+        sessionStorage.setItem("order", str);
+      });
     });
 
     function calcDistance(elem, mouseX, mouseY) {
@@ -120,9 +144,8 @@
         + Math.pow(mouseY - (elem.offsetTop+(elem.clientHeight / 2)), 2)));
     }
 
-    const container = document.querySelector("#card-list");
-    container.addEventListener("dragenter", e => e.preventDefault());
-    container.addEventListener("dragover", e => {
+    parent.addEventListener("dragenter", e => e.preventDefault());
+    parent.addEventListener("dragover", e => {
       e.preventDefault();
 
       const items = document.querySelectorAll(".card");
