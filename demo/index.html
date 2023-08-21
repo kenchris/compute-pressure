@@ -70,6 +70,16 @@
     .hidden {
       display: none;
     }
+
+    #manual {
+      border: 2px solid #ccc;
+      padding: 6px;
+      display: grid;
+      grid-template-columns: 0.4fr 1fr;
+      grid-template-rows: repeat(4, 1fr);
+      grid-column-gap: 16px;
+      grid-row-gap: 0px;
+    }
   </style>
   <script src="pressure-emoji.js" type="module"></script>
   <script src="mandelbrot-player.js" type="module"></script>
@@ -96,7 +106,14 @@
         <summary>Side-Channel attack test</summary>
         <div class="">
           <div>
-            <input type=button id="calibrate" value="Broadcast"></input> <input id="skip-calibration" type="checkbox">Skip calibration</input>
+            <input type=button id="calibrate" value="Broadcast"></input> <input id="skip-calibration" type="checkbox">Use manual calibration</input>
+          </div>
+          <br><br>
+          <div id="manual">
+            Delay (milliseconds): <input id="manual-delay" type="number" placeholder="4000">
+            0-value (#workers): <input id="manual-zero" type="number" placeholder="0">
+            reset-value (#workers): <input id="manual-reset" type="number" placeholder="4">
+            1-value (#workers): <input id="manual-one" type="number" placeholder="6">
           </div>
           <br><br>
           <span id="what">Unknown</span>
@@ -164,6 +181,20 @@
 
     const delay = 4_000;
 
+    const elements = [
+      document.querySelector("#manual-zero"),
+      document.querySelector("#manual-reset"),
+      document.querySelector("#manual-one"),
+      document.querySelector("#manual-delay")
+    ];
+
+    elements.forEach(el => {
+      console.log(el.id);
+      const value = sessionStorage.getItem(el.id);
+      el.value = value ? value : el.placeholder;
+      el.onchange = () => sessionStorage.setItem(el.id, el.value);
+    });
+
     const broadcaster = new BitChannelBroadcaster(player.setWorkerCount.bind(player));
     broadcaster.addEventListener("bitsent", ev => {
       const bit = ev.detail.value;
@@ -207,9 +238,16 @@
 
         const calibrator = new PressureCalibrator(player.setWorkerCount.bind(player));
 
-        let calibration = { zero: 0, reset: 5, one: 8, delay: delay};
+        let calibration;
         if (!skipCalibrationBtn.checked) {
           calibration = await calibrator.calibrate()
+        } else {
+          calibration = {
+            zero: document.querySelector("#manual-zero"),
+            reset: document.querySelector("#manual-reset"),
+            one: document.querySelector("#manual-one"),
+            delay: document.querySelector("#manual-delay"),
+          };
         }
         console.log(JSON.stringify(calibration));
 
