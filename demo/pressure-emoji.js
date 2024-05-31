@@ -45,11 +45,18 @@ const sheet = css`
 `;
 
 class PressureEmoji extends HTMLElement {
+  static observedAttributes = ["source"];
+
   constructor() {
     super();
     this.attachShadow({ 'mode': 'open' });
     this.shadowRoot.appendChild(template.content.cloneNode(true));
     this.shadowRoot.adoptedStyleSheets = [sheet];
+    this.source = "cpu";
+  }
+
+  attributeChangedCallback(name, _, newValue) {
+    this.source = newValue;
   }
 
   connectedCallback() {
@@ -89,12 +96,12 @@ class PressureEmoji extends HTMLElement {
       }
       if (btn.active == false) {
         btn.disabled = true;
-        await observer.observe("cpu");
+        await observer.observe(this.source);
         btn.active = true;
         btn.innerText = "⏹️";
         btn.disabled = false;
       } else {
-        observer.unobserve("cpu");
+        observer.unobserve(this.source);
         btn.active = false;
         btn.innerText = "▶️";
         emoji.innerText = "😴";

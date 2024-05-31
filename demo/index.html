@@ -87,14 +87,22 @@
     <div id="status-text" class="disabled hidden">This browser doesn't support the Compute Pressure API</div>
     <div id="card-list" class="invisible">
       <details open class="card" draggable="true" data-key="0">
-        <summary>Compute Pressure demo</summary>
+        <summary>Pressure (CPU)</summary>
         <div>Press play to have the emoji react to the pressure.</div><br><br>
         <div class="content">
-          <pressure-emoji></pressure-emoji>
+          <pressure-emoji source="cpu"></pressure-emoji>
         </div>
       </details>
 
       <details open class="card" draggable="true" data-key="1">
+        <summary>Pressure (CPU - same-origin)</summary>
+        <div>Press play to have the emoji react to the pressure.</div><br><br>
+        <div class="content">
+          <pressure-emoji source="cpu-same-origin"></pressure-emoji>
+        </div>
+      </details>
+
+      <details open class="card" draggable="true" data-key="2">
         <summary>Artificial pressure</summary>
         <div>Add pressure in parallel, by adding workers.</div><br><br>
         <div class="content">
@@ -102,7 +110,7 @@
         </div>
       </details>
 
-      <details open class="card" draggable="true" data-key="2">
+      <details open class="card" draggable="true" data-key="3">
         <summary>Side-Channel attack test</summary>
         <div class="">
           <div>
@@ -134,15 +142,26 @@
 
     const order = sessionStorage.getItem("order");
     if (order) {
-      const copy = [];
+      let copy = [];
+      let extras = [];
+      let indices = order.split(",");
 
-      document.querySelectorAll(".card").forEach(item => {
-        copy.push(parent.removeChild(item));
+      document.querySelectorAll(".card").forEach((item, index) => {
+        if (indices.includes(String(index))) {
+          copy.push(parent.removeChild(item));
+        } else {
+          extras.push(parent.removeChild(item));
+        }
       })
 
       for (let index of order.split(",")) {
         parent.appendChild(copy[index]);
       }
+
+      for (let child of extras) {
+        parent.appendChild(child);
+      }
+
     }
     parent.classList.remove("invisible");
 
