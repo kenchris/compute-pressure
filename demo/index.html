@@ -42,6 +42,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-direction: column;
     }
 
     summary {
@@ -99,6 +100,7 @@
         <div>Add pressure in parallel, by adding workers.</div><br><br>
         <div class="content">
           <mandelbrot-player id="player"></mandelbrot-player>
+          <div id="table"></div>
         </div>
       </details>
 
@@ -123,6 +125,26 @@
       </details>
     </div>
   </body>
+  <script type="module">
+    const player = document.querySelector("#player");
+    const table = document.querySelector("#table");
+    player.addEventListener("worker-change", event => {
+      const workerCount = event.detail.workerCount;
+      console.log("hi", workerCount, table.children.length)
+      while (table.children.length < workerCount) {
+        table.appendChild(document.createElement("div"));
+      }
+      while (workerCount < table.children.length) {
+        table.removeChild(table.children[table.children.length - 1]);
+      }
+    })
+    player.addEventListener("pressure-change", event => {
+      const index = event.detail.workerIndex;
+      const state = event.detail.state;
+      const oce = event.detail.ownContributionEstimate;
+      table.children[index].innerText = `Worker #${index}: ${state} - ${oce}`;
+    });
+  </script>
   <script type="module">
     import { BitDataView, MessageEncoder, MessageDecoder, toBinaryString, reverseByte } from "./binutils.js";
     import { PressureCalibrator } from "./pressure-calibrator.js";

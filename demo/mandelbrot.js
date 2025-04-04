@@ -103,7 +103,7 @@ const mandelbrotWorkers = new class {
   }
 };
 
-export class Animator {
+export class Animator extends EventTarget {
   scale_start = 1.0;
   scale_end   = 0.0005;
   xc_start    = -0.5;
@@ -117,6 +117,7 @@ export class Animator {
   pending_frames = [];
 
   constructor(canvas) {
+    super();
     this.canvas = canvas;
     this.canvas.drawImageFrame(null);
 
@@ -199,6 +200,16 @@ export class Animator {
     const updateFrame = e => {
       const worker_index  = e.data.worker_index;
       const request_count = e.data.message.request_count;
+      const state = e.data.state;
+      const ownContributionEstimate = e.data.ownContributionEstimate;
+
+      this.dispatchEvent(new CustomEvent("pressure-change", {
+        detail: {
+          workerIndex: worker_index,
+          state,
+          ownContributionEstimate
+        }
+      }));
 
       // If not terminated in the meanwhile.
       if (worker_index < mandelbrotWorkers.workerCount()) {

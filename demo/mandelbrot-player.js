@@ -105,6 +105,10 @@ class MandelbrotPlayer extends HTMLElement {
     this.#canvas = new Mandelbrot(this.shadowRoot.getElementById("mandel"));
     this.#animator = new Animator(this.#canvas);
 
+    this.#animator.addEventListener("pressure-change", event => {
+      this.dispatchEvent(new CustomEvent("pressure-change", { detail: event.detail }));
+    })
+
     const input = this.shadowRoot.querySelector("#scale");
     input.value = Number(sessionStorage.getItem(`${input.tagName}@scale`) ?? '');
     this.setScale(input.value);
@@ -146,6 +150,8 @@ class MandelbrotPlayer extends HTMLElement {
       iterations: 1,
     }
     el.animate(animation, timing).finished.then(() => el.remove());
+  
+    this.dispatchEvent(new CustomEvent("worker-change", { detail: { workerCount: count }}));
   }
 }
 
