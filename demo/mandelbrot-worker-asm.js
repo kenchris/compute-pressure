@@ -39,7 +39,7 @@ if (typeof Math.fround == 'undefined') {
       worker_index: e.data.worker_index,
       message,
       state: lastRecord.state,
-      ownContributionRecord: lastRecord.ownContributionEstimate,
+      ownContributionEstimate: lastRecord.ownContributionEstimate,
       buffer: e.data.buffer
     }, [e.data.buffer]);
   }
